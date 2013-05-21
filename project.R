@@ -98,29 +98,60 @@ calculateModels = function(models, combinations, col, data) {
 	return (res)
 }
 
+# Znajduje index listy w podanej liscie na ktorej blad srednio kw jest najmniejszy
+# combined	- lista zbiorow modeli
+# return	- indeks na liscie ktora kombinacja modeli ma najmniejszy blad srednio kw
+findMinIndex = function(combined) {
+	resIndex <- 1
+	resMin <- combined[[1]]$mse
+
+	for (i in 1:length(combined)) {
+		if (resMin > combined[[i]]$mse) {
+			resIndex <- i
+			resMin <- combined[[i]]$mse
+		}
+	}
+
+	return (resIndex)
+}
+
 
 # Nasz program
 # data		- data frame z danymi
+# mAmount	- ile zaburzonych modeli generujemy
+# N			- generuj kombinacje od N elementowych
 # col		- kolumna do przewidywania
 # return	- ??? to co bedize na koncu
-alhe = function(data, N=1, col=-1) {
+alhe = function(data, mAmount=5, N=1, col=-1) {
 	if (col == -1) {
 		nms <- names(data)
 		col <- nms[length(nms)]
 	}
 	
-	datas <- randDatas(data, 5)
+	datas <- randDatas(data, mAmount)
 	models <- genModels(datas, col)
 
 	er = 999
 	epsilon = 1
+	minMseCombine <- 0
+	n <- N
 	while (er > epsilon && N <= length(models)) {
 	print(N)
 	print("------------------------------")
 		combinations <- combn(1:length(models), N)
 		combined <- calculateModels(models, combinations, col, data)
-		
-		print(combined)
+
+		minIndex <- findMinIndex(combined)
+
+		if (n == N) {
+			minMseCombine <- combined[[minIndex]]
+		} else {
+			if (minMseCombine$mse > combined[[minIndex]]$mse) {
+				minMseCombine <- combined[[minIndex]]
+			}
+		}
+		print(minMseCombine$mse)
+		#print(combined)
 		##
 		#er = 1
 		##
