@@ -226,12 +226,8 @@ bubleListSortViaCol <- function(data, col) {
 # amount		- liczba osobnikow do wybrania
 # return		- podlista listy population zawierajaca wybrane osobniki
 selection = function(population, amount) {
-	result = list()
-	
-	for(i in 1:amount) {
-		result[[i]] <- population[[sample.int(length(population), 1)]]
-	}
-	
+	result <- population[sample.int(length(population), amount)]
+
 	return (result)
 }
 
@@ -258,7 +254,7 @@ extendEntities = function(toExtend, predictions, data, column) {
 		}
 		
 		#wylosuj element do dodania
-		newCombinations[[i]][[unusedModels[[sample.int(length(unusedModels))]]]] <- true
+		newCombinations[[i]][[unusedModels[[sample.int(length(unusedModels))]]]] <- TRUE
 	}
 	
 	result <- calculatePredictions(predictions, newCombinations, data, column)
@@ -305,10 +301,10 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 	population <- calculatePredictions(predictions, pop, data, col )
 	
 	#zostaw tylko te unikalne osobniki
-	population <- population[unique(population$predictionList)]
+	#population <- population[unique(population$predictionList)] # nie mozesz od tak wziac unikalnych
 	
 	#po sortuj od najlepszego do najgorszego
-	population <- bubleListSortViaCol(population, "rank")#population[order(population$rank),]
+	population <- bubleListSortViaCol(population, "rank")
 	
 	#zapamietaj ranking najlepszego
 	bestOneRank <- population[[1]]$rank
@@ -327,7 +323,8 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 	while ( diff > epsilon ) {
 		print(n)
 		print("------------------------------")
-		toCopulate <- selection(population, nSelect)
+		toCopulate <- selection(population, min(nSelect, length(population)))
+		
 		children <- copulation(toCopulate, predictions, data, col)
 		nextGeneration <- mutation(children, nMutate, predictions, data, col)
 		
@@ -335,10 +332,10 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 		population <- c(population, nextGeneration)
 		
 		#zostawic tylko unikalne osobniki
-		population <- population[unique(population$predictionList)]
+		#population <- population[unique(population$predictionList)] # nie mozesz od tak wziac unikalnych
 		
 		#posortowac wedlug rankingu (najlepszy na poczatku)
-		population <- population[order(population$rank),]
+		population <- bubleListSortViaCol(population, "rank")
 		
 		#sprawdz czy populacja nie urosla nam za bardzo
 		if(length(population) > popSize) {
@@ -369,7 +366,7 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 			}
 			
 			#a teraz dodaj do populacji osobiki o wieszej ilosci modeli
-			toExtend <- selection(population, nExtend)
+			toExtend <- selection(population, min(length(population), nExtend))
 			population <- population[1:(popSize - nRemove)]
 			extended <- extendEntities(toExtend, predictions, data, col)
 			
