@@ -98,6 +98,67 @@ calculateModels = function(models, combinations, col, data) {
 	return (res)
 }
 
+# Obliczamy przewidywania dla wszystkich pojedynczych modeli zeby potem operowac juz tylko na wartosciach
+# models	- lista modeli
+# data		- poczatkowe niezaburzone dane
+# return	- lista predictow
+calculateEachModel = function(models, data) {
+	result <- list()
+	
+	for ( i in 1:lenth(models)) {
+		result[[i]] <- predict(models[[i]], data)
+	}
+	
+	return (result)
+}
+
+# Oblicza srednie predykcje dla kombinacji modelu
+# predictions	- predykcje odpowiadajace modelom o numerach 1,2,3 itd
+# combinations	- kombinacje modeli (to co zwraca combn)
+# return		- lista srednich predykcji
+
+#zamienia format z tych wektorow na to na czym operujemy czyli:
+#	phenotype	osobink
+#		predictionList	lista wartosci boolowskich, ktore predykcje ten osobnik uwzglednia np {true, false, true} to osobnik z predykcji 1 i 3
+#		midPrediction	usredniona predykcja
+#		rank			blad srednio kwadratowy (minimalizujemy)
+# Funkcja wypelnia do postaci gotowego osobnika i zwraca liste osobnikow
+# liczy srednia predykcje i blad sredniokwadratowy (rank)
+# predictions	predykcje dla kolejnych modeli
+# population	wektory true, false z kotrych powstana osobiki
+# data			poczatkowe, niezaburzone dane
+# column		kolumna do przewidywania
+calculatePredictions = function(predictions, population, data, column) {
+	result <- list()
+	
+	for( i in 1:length(population)) {
+		result[[i]] = list(predictionList=population[[i]], midPrediction=0, rank=0)
+		
+		usedPredictions = c()
+		position = 1
+		
+		#znajdz wszystkie modele uzyte w tym osobniku
+		for( j in 1:length(population[[i]])) {
+			if(population[[i]][[j]]) {
+				if(position ==1) {
+					usedPredictions <-predictions[[j]]
+					position <- position +1
+				} else {
+					usedPredictions <- cbind(usedPredictions, predictions[[j]])
+				}
+			}
+		}
+		
+		#policz srednia predykcje i wrzuc ja w wektor kolumnowy
+		result[[i]]$midPrediction <- cbind(colMeans(usedPredictions))
+		
+		#policz blad sredniokwadratowy
+		result[[i]]$rank <- mse(result[[i]]$midPrediction, data[,column])
+	}
+	
+	return (result)
+}
+
 # Znajduje index listy w podanej liscie na ktorej blad srednio kw jest najmniejszy
 # combined	- lista zbiorow modeli
 # return	- indeks na liscie ktora kombinacja modeli ma najmniejszy blad srednio kw
@@ -114,52 +175,113 @@ findMinIndex = function(combined) {
 
 	return (resIndex)
 }
-
+# Generuje pierwsza populacje jako wsystkie kombinacje o rozmiarze maxymalnym maxNmbTrue
+# maxNmbTrue	- maxymalnie tyle modeli zaliczonych do osobnika
+# modelSize		- ogolna liczba modeli
+generateFirstPopulation = function(maxNmbTrue, modelSize) {
+	result = list()
+	
+	position = 1
+	for (i in 1:maxNmbTrue) {
+		combinations <- combn(1:modelSize, i)
+		for(j in 1:ncol(combinations)) {
+			results[[position]] <- 1:modelSize %in% combinations[,j]
+			position <- position + 1
+		}
+	}
+	
+	return(result)
+}
 
 # Nasz program
 # data		- data frame z danymi
 # mAmount	- ile zaburzonych modeli generujemy
 # N			- generuj kombinacje od N elementowych
 # col		- kolumna do przewidywania
+# epsilon	- jak roznica miedzy najlepszym z kolejnych rozmiarow jest mniejsza od tego to stop
+# nIter		- liczba iteracji przez ktora musi zachowac sie najlepszy
+# popSize	- rozmiar populacji
 # return	- ??? to co bedize na koncu
-alhe = function(data, mAmount=5, N=1, col=-1) {
+
+alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=50) {
 	if (col == -1) {
 		nms <- names(data)
 		col <- nms[length(nms)]
 	}
 	
+	#podukuj dane
 	datas <- randDatas(data, mAmount)
+	
+	#znajdz modele
 	models <- genModels(datas, col)
 
-	er = 999
-	epsilon = 1
+	#policz dla nich predicty
+	predictions <- calculateEachModel(models, data)
+	
+	#co to kurna jest
 	minMseCombine <- 0
+	
+	#przygotuj pierwsza populacje
+	#generuj osobnikow
+	pop <- generateFirstPopulation(N, lenth(models))
+	#a teraz wez je i policz dla nich srednie predykcje i bledy
+	# i nadaj im wlasciwa strukture
+	population <- calculatePredictions(predictions, pop, data, col )
+	
+	#po sortuj od najlepszego do najgorszego 
+	population <- population[order(population$rank),]
+	
+	#zapamietaj ranking najlepszego
+	bestOneRank <- population[[1]]$rank
+	bestOneIter <- 1
+	
+	#dane warunku stopu
+	diff = 999
 	n <- N
-	while (er > epsilon && N <= length(models)) {
-	print(N)
-	print("------------------------------")
-		combinations <- combn(1:length(models), N)
-		combined <- calculateModels(models, combinations, col, data)
-
-		minIndex <- findMinIndex(combined)
-
-		if (n == N) {
-			minMseCombine <- combined[[minIndex]]
-		} else {
-			if (minMseCombine$mse > combined[[minIndex]]$mse) {
-				minMseCombine <- combined[[minIndex]]
-			}
+	iterCount = 1
+	#let's roll the ball
+	#iterujemy po maksymalnej licznosci podzbiorow
+	#do poki roznica pommiedzy pokoleniami > eps lub do liczby modeli
+	while ( diff > epsilon && n <= length(models) ) {
+		print(n)
+		print("------------------------------")
+		toCopulate <- selection(population)
+		children <- copulation(toCopulate)
+		nextGeneration <- mutation(children)
+		
+		#teraz trzeba dorzucic next gen do population i zeby bylo posortowane
+	
+		#sprawdzamy besta
+		if(bestOneRank > population[[1]]$rank) {
+			bestOneRank <- population[[1]]$rank
+			bestOneIter <- iterCount
 		}
-		print(minMseCombine$mse)
-		#print(combined)
-		##
-		#er = 1
-		##
-		N = N + 1
+		
+		#sprawdz czy nie czas rozszerzyc populacje
+		if( iterCount - bestOneIter > nIter) {
+			
+		} else {
+			#jak nei czas to zwieksz licnzik iteracji
+			iterCount <- iterCount +1
+		}
+		
 	}
 	
-	res <- 0
-	#res <- meanPreds(models, data, col)
+	#stworzmy wynik
+	result = list(models=list(), midPrediction=population[[1]]$midPrediction, mse=population[[1]]$rank)
+	position = 1
+	for(i in length(population[[1]]$predictionList)) {
+		if(population[[1]]$predictionList[[i]]) {
+			reslt[[1]]$models[[position]] <- models[[i]]
+			position <- position +1
+		} 
+	}
+	
+	#tylko dla debugu#############################################################
+	print("Wynik:")
+	print(population[[1]]$predictionList)
+	print(population[[1]]$rank)
+	##############################################################################
 
-	return (res)
+	return (result)
 }
