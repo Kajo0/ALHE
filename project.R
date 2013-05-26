@@ -193,6 +193,51 @@ generateFirstPopulation = function(maxNmbTrue, modelSize) {
 	return(result)
 }
 
+#Wybiera z populacji osobniki do kopulacji
+# population	- populacja
+# amount		- liczba osobnikow do wybrania
+# return		- podlista listy population zawierajaca wybrane osobniki
+selection = function(population, amount) {
+	result = list()
+	
+	for(i in 1:amount) {
+		result[[i]] <- population[[sample.int(length(population), 1)]]
+	}
+	
+	return (result)
+}
+
+#Rozszerza populacje o nowy element w kazdym zbiorze
+# toExtend	- osobniki do rozszerzenia
+# predictions - uzywane predykcje odpowiadajace modelom
+# data			- nie zaburzone dane
+# column			- przewidywana kolumna
+#return			- nowe osobniki do populacji
+extendEntities = function(toExtend, predictions, data, column) {
+	
+	newCombinations = list()
+	for(i in 1:length(toExtend)) {
+		newCombinations[[i]] <- toExtend[[i]]$predictionList
+		
+		unusedModels = c()
+		position =1
+		#stworz liste modeli nie bedacych w tym zbiorze
+		for(j in 1:length(toExtend[[i]]$predictionList)) {
+			if(! toExtend[[i]]$predictionList[[j]]) {
+				unusedModel[[position]] <- j
+				position <- position + 1
+			}
+		}
+		
+		#wylosuj element do dodania
+		newCombinations[[i]][[unusedModels[[sample.int(length(unusedModels))]]]] <- true
+	}
+	
+	result <- calculatePredictions(predictions, newCombinations, data, column)
+	
+	return (result)
+}
+
 # Nasz program
 # data		- data frame z danymi
 # mAmount	- ile zaburzonych modeli generujemy
@@ -201,9 +246,15 @@ generateFirstPopulation = function(maxNmbTrue, modelSize) {
 # epsilon	- jak roznica miedzy najlepszym z kolejnych rozmiarow jest mniejsza od tego to stop
 # nIter		- liczba iteracji przez ktora musi zachowac sie najlepszy
 # popSize	- rozmiar populacji
-# return	- ??? to co bedize na koncu
-
-alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=50) {
+# nSelect	- liczba wybieranych do kopulacji
+# nMutate	- liczba mutowanych
+# nExtend	- liczba tych, ktore sa rozszerzane o kolejny element
+# nRemove	- liczba najgorszych usuwanych z populacji (zostaje maksymalnie popSize-nRemove) przy dodawaniu kolejnego elementu zbiorow
+# return	- lista w formacie:
+#				models - wybrane modele
+#				midPrediction - srednia predykcja
+#				mse	- blad sredniokwadratowy
+alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=50, nSelect=10, nMutate=2, nExtend=25, nRemove=25) {
 	if (col == -1) {
 		nms <- names(data)
 		col <- nms[length(nms)]
@@ -228,6 +279,9 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 	# i nadaj im wlasciwa strukture
 	population <- calculatePredictions(predictions, pop, data, col )
 	
+	#zostaw tylko te unikalne osobniki
+	population <- population[unique(population$predictionList)]
+	
 	#po sortuj od najlepszego do najgorszego 
 	population <- population[order(population$rank),]
 	
@@ -235,22 +289,38 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 	bestOneRank <- population[[1]]$rank
 	bestOneIter <- 1
 	
+	#ranking poprzedniego najlepszego w danym rozmiarze
+	oldBestRank = 99999
+	
 	#dane warunku stopu
-	diff = 999
+	diff = population[[1]]$rank
 	n <- N
 	iterCount = 1
 	#let's roll the ball
 	#iterujemy po maksymalnej licznosci podzbiorow
 	#do poki roznica pommiedzy pokoleniami > eps lub do liczby modeli
-	while ( diff > epsilon && n <= length(models) ) {
+	while ( diff > epsilon ) {
 		print(n)
 		print("------------------------------")
-		toCopulate <- selection(population)
-		children <- copulation(toCopulate)
-		nextGeneration <- mutation(children)
+		toCopulate <- selection(population, nSelect)
+		children <- copulation(toCopulate, predictions, data, col)
+		nextGeneration <- mutation(children, nMutate, predictions, data, col)
 		
-		#teraz trzeba dorzucic next gen do population i zeby bylo posortowane
-	
+		#teraz trzeba dorzucic next gen do population
+		population <- c(population, nextGeneration)
+		
+		#zostawic tylko unikalne osobniki
+		population <- population[unique(population$predictionList)]
+		
+		#posortowac wedlug rankingu (najlepszy na poczatku)
+		population <- population[order(population$rank),]
+		
+		#sprawdz czy populacja nie urosla nam za bardzo
+		if(length(population) > popSize) {
+			#jesli jest za duza to trzeba odciac ostatnich zeby bylo ok
+			population <- population[1:popSize]
+		}
+		
 		#sprawdzamy besta
 		if(bestOneRank > population[[1]]$rank) {
 			bestOneRank <- population[[1]]$rank
@@ -259,7 +329,35 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 		
 		#sprawdz czy nie czas rozszerzyc populacje
 		if( iterCount - bestOneIter > nIter) {
+			#sprawdz czy to juz nie koniec modeli
+			if( n == length(models)) {
+				break
+			} else {
+				#zwieksz maksymalny rozmiar
+				n <- n+1
+				
+				#oblicz roznice miedzy najlepszym w poprzednim rozmiarza a nowym
+				diff = oldBestRank - bestOneRank
+				
+				#zapisz aktualnego najlepszego jako poprzendiego
+				oldBestRank = bestOneRank
+			}
 			
+			#a teraz dodaj do populacji osobiki o wieszej ilosci modeli
+			toExtend <- selection(population, nExtend)
+			population <- population[1:(popSize - nRemove)]
+			extended <- extendEntities(toExtend, predictions, data, col)
+			
+			#teraz dorzuc to do populacji
+			population <- c(population, nextGeneration)
+			
+			#zostawic tylko unikalne osobniki
+			population <- population[unique(population$predictionList)]
+			
+			#posortowac wedlug rankingu (najlepszy na poczatku)
+			population <- population[order(population$rank),]
+			
+			#zeby dac wieksza szanse nowym osobnikom to pierwsza selekcja jest na rozszerzonej liscie (dlugosc max: popSize - nRemove + nExtend)
 		} else {
 			#jak nei czas to zwieksz licnzik iteracji
 			iterCount <- iterCount +1
