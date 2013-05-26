@@ -1,5 +1,11 @@
 # Przykladowe wzglednie liniowe dane
-#sampleData <- data.frame(age=18:29, height=c(76.1,77,78.1,78.2,78.8,79.7,79.9,81.1,81.2,81.8,82.8,83.5))
+a <- sampleData <- data.frame(age=18:29, height=c(76.1,77,78.1,78.2,78.8,79.7,79.9,81.1,81.2,81.8,82.8,83.5))
+a1 <- data.frame(age=c(18,20,22,24), height=c(76.1,78.1,78.8,79.9))
+a2 <- data.frame(age=c(19,21,23,25,27), height=c(77,78.2,79.7,81.1,81.8))
+a3 <- data.frame(age=c(18,21,29), height=c(76.1,78.2,83.5))
+a4 <- data.frame(age=c(19,20,24,29), height=c(77,78.1,79.9,83.5))
+a5 <- data.frame(age=c(22,23,28), height=c(78.8,79.7,82.8))
+la <- list(a1,a2,a3,a4,a5)
 #sampleCombinations <- combn(1:1, 1)
 #sampleModels <- list()
 #sampleModels[[1]] <- lm(height~., sampleData)
@@ -105,17 +111,12 @@ calculateModels = function(models, combinations, col, data) {
 calculateEachModel = function(models, data) {
 	result <- list()
 	
-	for ( i in 1:lenth(models)) {
+	for ( i in 1:length(models)) {
 		result[[i]] <- predict(models[[i]], data)
 	}
 	
 	return (result)
 }
-
-# Oblicza srednie predykcje dla kombinacji modelu
-# predictions	- predykcje odpowiadajace modelom o numerach 1,2,3 itd
-# combinations	- kombinacje modeli (to co zwraca combn)
-# return		- lista srednich predykcji
 
 #zamienia format z tych wektorow na to na czym operujemy czyli:
 #	phenotype	osobink
@@ -141,7 +142,7 @@ calculatePredictions = function(predictions, population, data, column) {
 		for( j in 1:length(population[[i]])) {
 			if(population[[i]][[j]]) {
 				if(position ==1) {
-					usedPredictions <-predictions[[j]]
+					usedPredictions <- cbind(predictions[[j]])
 					position <- position +1
 				} else {
 					usedPredictions <- cbind(usedPredictions, predictions[[j]])
@@ -150,7 +151,7 @@ calculatePredictions = function(predictions, population, data, column) {
 		}
 		
 		#policz srednia predykcje i wrzuc ja w wektor kolumnowy
-		result[[i]]$midPrediction <- cbind(colMeans(usedPredictions))
+		result[[i]]$midPrediction <- rowMeans(usedPredictions)
 		
 		#policz blad sredniokwadratowy
 		result[[i]]$rank <- mse(result[[i]]$midPrediction, data[,column])
@@ -175,6 +176,7 @@ findMinIndex = function(combined) {
 
 	return (resIndex)
 }
+
 # Generuje pierwsza populacje jako wsystkie kombinacje o rozmiarze maxymalnym maxNmbTrue
 # maxNmbTrue	- maxymalnie tyle modeli zaliczonych do osobnika
 # modelSize		- ogolna liczba modeli
@@ -185,12 +187,38 @@ generateFirstPopulation = function(maxNmbTrue, modelSize) {
 	for (i in 1:maxNmbTrue) {
 		combinations <- combn(1:modelSize, i)
 		for(j in 1:ncol(combinations)) {
-			results[[position]] <- 1:modelSize %in% combinations[,j]
+			result[[position]] <- 1:modelSize %in% combinations[,j]
 			position <- position + 1
 		}
 	}
 	
 	return(result)
+}
+
+# Sortuje liste wg wartosci z podanej etykietki
+# data		- lista danych
+# col		- etykietka
+# return	- posortowana lista
+bubleListSortViaCol <- function(data, col) {
+	itemCount <- length(data)
+
+	repeat {
+		hasChanged <- FALSE
+		itemCount <- itemCount - 1
+		if (itemCount == 0)
+			break
+		for(i in 1:itemCount) {
+			if ( data[[i]][[col]] > data[[i+1]][[col]] ) {
+				t <- data[[i]]
+				data[[i]] <- data[[i+1]]
+				data[[i+1]] <- t
+				hasChanged <- TRUE
+			}
+		}
+		if ( !hasChanged ) break;
+	}
+
+	return (data)
 }
 
 # Nasz program
@@ -218,18 +246,15 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 	#policz dla nich predicty
 	predictions <- calculateEachModel(models, data)
 	
-	#co to kurna jest
-	minMseCombine <- 0
-	
 	#przygotuj pierwsza populacje
 	#generuj osobnikow
-	pop <- generateFirstPopulation(N, lenth(models))
+	pop <- generateFirstPopulation(N, length(models))
 	#a teraz wez je i policz dla nich srednie predykcje i bledy
 	# i nadaj im wlasciwa strukture
 	population <- calculatePredictions(predictions, pop, data, col )
 	
-	#po sortuj od najlepszego do najgorszego 
-	population <- population[order(population$rank),]
+	#po sortuj od najlepszego do najgorszego
+	population <- bubleListSortViaCol(population, "rank")#population[order(population$rank),]
 	
 	#zapamietaj ranking najlepszego
 	bestOneRank <- population[[1]]$rank
