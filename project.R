@@ -262,6 +262,75 @@ extendEntities = function(toExtend, predictions, data, column) {
 	return (result)
 }
 
+# Kopuluje 2 zbiory
+# set1		- pierwszy zbiór modeli
+# set2		- drugi zbiór modeli
+# maxTrue	- maksymalna licznosc nowego zbioru
+copulateEntity = function(set1, set2, maxTrue) {
+		##nie wiem jak to zrobic zeby wybieral z ustalonym prawdopodobienstwem
+}
+
+#Krzyzowanie osobnikow
+# toCopulate	- osobniki do krzyzowania
+# predictions	- predykcje odpowiadajace modelom
+# data			- nie zaburzone dane
+# column		- kolumna
+# maxTrue		- maksymalna liczba modeli w osobniku
+#return			- osobniki po kopulacji
+copulation = function(toCopulate, predictions, data, column, maxTrue) {
+	newSets = list()
+	#kopuluj kazdego z sasiadem po prawo
+	for(i in 1:(length(toCopulate) -1)) {
+		newSets[[i]] <- copulateEntity(toCopulate[[i]]$predictionList, toCopulate[[i+1]]$predictionList, maxTrue)
+	}
+	#a ostatni z pierwszym
+	newSets[[length(toCopulate)]] <- copulateEntity(toCopulate[[length(toCopulate)]]$predictionList, toCopulate[[1]]$predictionList, maxTrue)
+	
+	result <- calculatePredictions(predictions, newSets, data, column)
+	return (result)	
+}
+
+#Mutuje osobniki 
+# generation	- osobniki sposrod ktorych trzeba wybrac te do mutacji
+# nMutate		- liczba osobnikow do zbutowania
+# predictions	- predykcje odpowiadajace elementom
+# data			- poczatkowe nie zaburzone dane
+# column		- przewidywana kolumna
+# maxTrue		- maksymalna licznosc podzbioru
+mutation = function(generation, nMutate, predictions, data, column, maxTrue) {
+	#wszystkie ktore byly to beda
+	result = generation
+	newCombinations = list()
+	for( i in 1:nMutate) {
+		#wybierz osobnika do zmutowania
+		toMutate <- generation[[sample.int(length(generation), 1)]]
+		#wybierz gen do zmiany
+		gen <- sample.int(length(toMutate$predictionList), 1)
+		toMutate$predictionLis[[gen]] <- !toMutate$predictionLis[[gen]]
+		
+		#zlicz elementy w zbiorze
+		trueFields <- c()
+		for(j in 1:length(toMutate$predictionList)) {
+			if(toMutate$predictionList[[j]]) {
+				trueFields <- c(trueFields, j)
+			}
+		}
+		#a jak jest ich za duzo to wywal losowo zeby bylo dobrze
+		if(length(trueFields) > maxTrue) {
+			toRemove = sample.int(length(trueFields), length(trueFields) - maxTrue)
+			for(j in 1:length(toRemove)) {
+				toMutate$predictionList[[j]] = !toMutate$predictionList[[j]]
+			}
+		}
+		
+		#dodaj do zmutowanych kombinacji
+		newCombinations <- c(newCombinations, toMutate$predictionList)
+	}
+	
+	#dodaj do tych co byly ich mutanty
+	result <- c(result, calculatePredictions(predictions, newCombinations, data, column))
+	return (result)
+}
 # Nasz program
 # data		- data frame z danymi
 # mAmount	- ile zaburzonych modeli generujemy
@@ -325,8 +394,8 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 		print("------------------------------")
 		toCopulate <- selection(population, min(nSelect, length(population)))
 		
-		children <- copulation(toCopulate, predictions, data, col)
-		nextGeneration <- mutation(children, nMutate, predictions, data, col)
+		children <- copulation(toCopulate, predictions, data, col, n)
+		nextGeneration <- mutation(children, nMutate, predictions, data, col, n)
 		
 		#teraz trzeba dorzucic next gen do population
 		population <- c(population, nextGeneration)
@@ -374,10 +443,10 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 			population <- c(population, nextGeneration)
 			
 			#zostawic tylko unikalne osobniki
-			population <- population[unique(population$predictionList)]
+			#population <- population[unique(population$predictionList)]
 			
 			#posortowac wedlug rankingu (najlepszy na poczatku)
-			population <- population[order(population$rank),]
+			population <- bubleListSortViaCol(population, "rank")
 			
 			#zeby dac wieksza szanse nowym osobnikom to pierwsza selekcja jest na rozszerzonej liscie (dlugosc max: popSize - nRemove + nExtend)
 		} else {
