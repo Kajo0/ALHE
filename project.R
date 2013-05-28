@@ -370,10 +370,12 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 	population <- calculatePredictions(predictions, pop, data, col )
 	
 	#zostaw tylko te unikalne osobniki
+	population <-population[!duplicated(lapply(population, function(pop) p1$predictionList))]
+	
 	#population <- population[unique(population$predictionList)] # nie mozesz od tak wziac unikalnych
 	
 	#po sortuj od najlepszego do najgorszego
-	population <- bubleListSortViaCol(population, "rank")
+	population <- population[order(sapply(population, function(pop) pop$rank))]
 	
 	#zapamietaj ranking najlepszego
 	bestOneRank <- population[[1]]$rank
@@ -401,10 +403,11 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 		population <- c(population, nextGeneration)
 		
 		#zostawic tylko unikalne osobniki
+		population <-population[!duplicated(lapply(population, function(pop) p1$predictionList))]
 		#population <- population[unique(population$predictionList)] # nie mozesz od tak wziac unikalnych
 		
 		#posortowac wedlug rankingu (najlepszy na poczatku)
-		population <- bubleListSortViaCol(population, "rank")
+	population <- population[order(sapply(population, function(pop) pop$rank))]
 		
 		#sprawdz czy populacja nie urosla nam za bardzo
 		if(length(population) > popSize) {
