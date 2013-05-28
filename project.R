@@ -13,7 +13,6 @@ la <- list(a1,a2,a3,a4,a5)
 ##sampleModels[[2]] <- lm(height~., randRows(sampleData))
 ##sampleModels[[3]] <- lm(height~., randRows(sampleData))
 ##sampleCombinations <- combn(1:3, 2)
-###calculateModels(sampleModels, sampleCombinations, "height", sampleData)
 
 
 
@@ -60,47 +59,6 @@ genModels = function(datas, col) {
 		res[[i]] <- lm(formula(frm), datas[[i]])
 	}
 	
-	return (res)
-}
-
-# Obliczamy przewidywania i sredni blad kwadratowy dla danych kombinacji modeli
-# 	i zapisujemy kombinacje numerow modeli uzyte do predykcji
-# models		- lista modeli
-# combinations	- tabela kombinacji bez takich 1:1, 2:2 lub 3:1, bo jest 1:3 -> format jak to co zwraca funckja ?combn
-# col			- nazwa kolumny ktora przewidujemy uzywane do bledu srednio kw
-# data			- poczatkowe niezaburzone dane
-# return		- lista wynikow z:
-#					models	- wektor numerow uzytych modeli z podanej listy
-#					predict	- srednia z predykcji dla kombinacji modeli (w szczegolnosci dla kombinacji pojedynczej - predict modelu)
-#					mse		- obliczony blad srednio kw
-calculateModels = function(models, combinations, col, data) {
-	res <- list()
-	
-	for (i in 1:ncol(combinations)) {
-		res[[i]] <- list(models=c(), predict=0, mse=0)
-
-		for (j in 1:nrow(combinations)) {
-			modelNum <- combinations[j,i]
-			# numery na liscie uzytych modeli
-			res[[i]]$models <- append(res[[i]]$models, modelNum)
-			
-			# przewidujemy
-			prediction <- predict(models[[modelNum]], data)
-			
-			if (j == 1) {
-				res[[i]]$predict <- prediction
-			} else {
-				res[[i]]$predict <- cbind(res[[i]]$predict, prediction)
-			}
-		}
-
-		# srednia z predykcji
-		res[[i]]$predict <- rowMeans(cbind(res[[i]]$predict, prediction))
-		
-		# obliczamy blad srednio kwadratowy
-		res[[i]]$mse <- mse(res[[i]]$predict, data[,col])
-	}
-
 	return (res)
 }
 
@@ -195,32 +153,6 @@ generateFirstPopulation = function(maxNmbTrue, modelSize) {
 	return(result)
 }
 
-# Sortuje liste wg wartosci z podanej etykietki
-# data		- lista danych
-# col		- etykietka
-# return	- posortowana lista
-bubleListSortViaCol <- function(data, col) {
-	itemCount <- length(data)
-
-	repeat {
-		hasChanged <- FALSE
-		itemCount <- itemCount - 1
-		if (itemCount == 0)
-			break
-		for(i in 1:itemCount) {
-			if ( data[[i]][[col]] > data[[i+1]][[col]] ) {
-				t <- data[[i]]
-				data[[i]] <- data[[i+1]]
-				data[[i+1]] <- t
-				hasChanged <- TRUE
-			}
-		}
-		if ( !hasChanged ) break;
-	}
-
-	return (data)
-}
-
 #Wybiera z populacji osobniki do kopulacji
 # population	- populacja
 # amount		- liczba osobnikow do wybrania
@@ -243,18 +175,24 @@ extendEntities = function(toExtend, predictions, data, column) {
 	for(i in 1:length(toExtend)) {
 		newCombinations[[i]] <- toExtend[[i]]$predictionList
 		
-		unusedModels = c()
-		position =1
-		#stworz liste modeli nie bedacych w tym zbiorze
-		for(j in 1:length(toExtend[[i]]$predictionList)) {
-			if(! toExtend[[i]]$predictionList[[j]]) {
-				unusedModel[[position]] <- j
-				position <- position + 1
-			}
+		unusedModels <- which(toExtend[[i]]$predictionList == F)
+		if (length(unusedModels) == 1) {
+			newCombinations[[i]][unusedModels[1]] <- T
+		} else {
+			newCombinations[[i]][sample(unusedModels, 1)] <- T
 		}
-		
-		#wylosuj element do dodania
-		newCombinations[[i]][[unusedModels[[sample.int(length(unusedModels))]]]] <- TRUE
+		#unusedModels = c()
+		#position =1
+		##stworz liste modeli nie bedacych w tym zbiorze
+		#for(j in 1:length(toExtend[[i]]$predictionList)) {
+		#	if(! toExtend[[i]]$predictionList[[j]]) {
+		#		unusedModel[[position]] <- j
+		#		position <- position + 1
+		#	}
+		#}
+		#
+		##wylosuj element do dodania
+		#newCombinations[[i]][[unusedModels[[sample.int(length(unusedModels))]]]] <- TRUE
 	}
 	
 	result <- calculatePredictions(predictions, newCombinations, data, column)
@@ -266,8 +204,37 @@ extendEntities = function(toExtend, predictions, data, column) {
 # set1		- pierwszy zbiór modeli
 # set2		- drugi zbiór modeli
 # maxTrue	- maksymalna licznosc nowego zbioru
-copulateEntity = function(set1, set2, maxTrue) {
+copulateEntity = function(set1, set2, maxTrue, rank1, rank2) {
 		##nie wiem jak to zrobic zeby wybieral z ustalonym prawdopodobienstwem
+	sm = set1 | set2
+	w1 <- which(set1 == T)
+	w2 <- which(set2 == T)
+
+	w <- unique(append(w1, w2))
+
+	if (sum(sm) > maxTrue) {
+		# usuwamy losowe wystepujace tylko w osobniku z mniejszym rankingiem
+		if (rank1 < rank2) {
+			r = w1
+		} else {
+			r = w2
+		}
+
+		toRemoveAmount = sum(sm) - maxTrue
+
+		# jak wiecej do usuniecia niz jest w gorszym to usuwamy losowo z dwoch
+		if (toRemoveAmount > length(r)) {
+			r = w
+		}
+		
+		if (length(r) == 1) {
+			sm[r] <- F
+		} else {
+			sm[sample(r, toRemoveAmount)] <- F
+		}
+	}
+
+	return (sm)
 }
 
 #Krzyzowanie osobnikow
@@ -280,11 +247,14 @@ copulateEntity = function(set1, set2, maxTrue) {
 copulation = function(toCopulate, predictions, data, column, maxTrue) {
 	newSets = list()
 	#kopuluj kazdego z sasiadem po prawo
-	for(i in 1:(length(toCopulate) -1)) {
-		newSets[[i]] <- copulateEntity(toCopulate[[i]]$predictionList, toCopulate[[i+1]]$predictionList, maxTrue)
+	
+	for(i in 1:(length(toCopulate) - 1)) {
+		newSets[[i]] <- copulateEntity(toCopulate[[i]]$predictionList, toCopulate[[i+1]]$predictionList, maxTrue,
+										toCopulate[[i]]$rank, toCopulate[[i+1]]$rank)
 	}
 	#a ostatni z pierwszym
-	newSets[[length(toCopulate)]] <- copulateEntity(toCopulate[[length(toCopulate)]]$predictionList, toCopulate[[1]]$predictionList, maxTrue)
+	newSets[[length(toCopulate)]] <- copulateEntity(toCopulate[[length(toCopulate)]]$predictionList, toCopulate[[1]]$predictionList, maxTrue,
+													toCopulate[[length(toCopulate)]]$rank, toCopulate[[1]]$rank)
 	
 	result <- calculatePredictions(predictions, newSets, data, column)
 	return (result)	
@@ -292,7 +262,7 @@ copulation = function(toCopulate, predictions, data, column, maxTrue) {
 
 #Mutuje osobniki 
 # generation	- osobniki sposrod ktorych trzeba wybrac te do mutacji
-# nMutate		- liczba osobnikow do zbutowania
+# nMutate		- liczba osobnikow do zmutowania
 # predictions	- predykcje odpowiadajace elementom
 # data			- poczatkowe nie zaburzone dane
 # column		- przewidywana kolumna
@@ -301,6 +271,8 @@ mutation = function(generation, nMutate, predictions, data, column, maxTrue) {
 	#wszystkie ktore byly to beda
 	result = generation
 	newCombinations = list()
+	position = 1
+
 	for( i in 1:nMutate) {
 		#wybierz osobnika do zmutowania
 		toMutate <- generation[[sample.int(length(generation), 1)]]
@@ -324,13 +296,15 @@ mutation = function(generation, nMutate, predictions, data, column, maxTrue) {
 		}
 		
 		#dodaj do zmutowanych kombinacji
-		newCombinations <- c(newCombinations, toMutate$predictionList)
+		newCombinations[[position]] <- toMutate$predictionList
+		position = position + 1
 	}
-	
+
 	#dodaj do tych co byly ich mutanty
 	result <- c(result, calculatePredictions(predictions, newCombinations, data, column))
 	return (result)
 }
+
 # Nasz program
 # data		- data frame z danymi
 # mAmount	- ile zaburzonych modeli generujemy
@@ -370,30 +344,28 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 	population <- calculatePredictions(predictions, pop, data, col )
 	
 	#zostaw tylko te unikalne osobniki
-	population <-population[!duplicated(lapply(population, function(pop) p1$predictionList))]
-	
-	#population <- population[unique(population$predictionList)] # nie mozesz od tak wziac unikalnych
+	population <- population[!duplicated(lapply(population, function(p) p$predictionList))]
 	
 	#po sortuj od najlepszego do najgorszego
-	population <- population[order(sapply(population, function(pop) pop$rank))]
+	population <- population[order(sapply(population, function(p) p$rank))]
 	
 	#zapamietaj ranking najlepszego
 	bestOneRank <- population[[1]]$rank
 	bestOneIter <- 1
 	
 	#ranking poprzedniego najlepszego w danym rozmiarze
-	oldBestRank = 99999
+	diff = 99999
 	
 	#dane warunku stopu
-	diff = population[[1]]$rank
+	oldBestRank = population[[1]]$rank
 	n <- N
 	iterCount = 1
 	#let's roll the ball
 	#iterujemy po maksymalnej licznosci podzbiorow
 	#do poki roznica pommiedzy pokoleniami > eps lub do liczby modeli
 	while ( diff > epsilon ) {
-		print(n)
-		print("------------------------------")
+#		print(n)
+#		print("------------------------------")
 		toCopulate <- selection(population, min(nSelect, length(population)))
 		
 		children <- copulation(toCopulate, predictions, data, col, n)
@@ -403,11 +375,10 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 		population <- c(population, nextGeneration)
 		
 		#zostawic tylko unikalne osobniki
-		population <-population[!duplicated(lapply(population, function(pop) p1$predictionList))]
-		#population <- population[unique(population$predictionList)] # nie mozesz od tak wziac unikalnych
-		
+		population <- population[!duplicated(lapply(population, function(p) p$predictionList))]
+
 		#posortowac wedlug rankingu (najlepszy na poczatku)
-	population <- population[order(sapply(population, function(pop) pop$rank))]
+		population <- population[order(sapply(population, function(p) p$rank))]
 		
 		#sprawdz czy populacja nie urosla nam za bardzo
 		if(length(population) > popSize) {
@@ -432,6 +403,9 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 				
 				#oblicz roznice miedzy najlepszym w poprzednim rozmiarza a nowym
 				diff = oldBestRank - bestOneRank
+#TODO tu zazwyczaj 0 jest bo najlepszy jest zzawsze ten sam
+				print("!!!!!!!!!!!!!")
+				print(c(diff, oldBestRank, bestOneRank))
 				
 				#zapisz aktualnego najlepszego jako poprzendiego
 				oldBestRank = bestOneRank
@@ -439,39 +413,40 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 			
 			#a teraz dodaj do populacji osobiki o wieszej ilosci modeli
 			toExtend <- selection(population, min(length(population), nExtend))
-			population <- population[1:(popSize - nRemove)]
+			population <- population[1:min(length(population), popSize - nRemove)]
 			extended <- extendEntities(toExtend, predictions, data, col)
 			
 			#teraz dorzuc to do populacji
-			population <- c(population, nextGeneration)
+			population <- c(population, extended)
 			
 			#zostawic tylko unikalne osobniki
-			#population <- population[unique(population$predictionList)]
-			
+			population <- population[!duplicated(lapply(population, function(p) p$predictionList))]
+
 			#posortowac wedlug rankingu (najlepszy na poczatku)
-			population <- bubleListSortViaCol(population, "rank")
+			population <- population[order(sapply(population, function(p) p$rank))]
 			
 			#zeby dac wieksza szanse nowym osobnikom to pierwsza selekcja jest na rozszerzonej liscie (dlugosc max: popSize - nRemove + nExtend)
 		} else {
 			#jak nei czas to zwieksz licnzik iteracji
 			iterCount <- iterCount +1
 		}
-		
+
+		print(c(n, diff))
 	}
 	
 	#stworzmy wynik
-	result = list(models=list(), midPrediction=population[[1]]$midPrediction, mse=population[[1]]$rank)
-	position = 1
-	for(i in length(population[[1]]$predictionList)) {
-		if(population[[1]]$predictionList[[i]]) {
-			reslt[[1]]$models[[position]] <- models[[i]]
-			position <- position +1
-		} 
-	}
+#	result = list(models=list(), midPrediction=population[[1]]$midPrediction, mse=population[[1]]$rank)
+#	position = 1
+#	for(i in length(population[[1]]$predictionList)) {
+#		if(population[[1]]$predictionList[[i]]) {
+#			result[[1]]$models[[position]] <- models[[i]]
+#			position <- position +1
+#		} 
+#	}
 	
 	#tylko dla debugu#############################################################
 	print("Wynik:")
-	print(population[[1]]$predictionList)
+#	print(population[[1]]$predictionList)
 	print(population[[1]]$rank)
 	##############################################################################
 
