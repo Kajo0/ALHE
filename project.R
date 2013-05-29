@@ -110,6 +110,11 @@ calculateEachModel = function(models, dat) {
 	return (result)
 }
 
+
+#####################################################
+#	Funkcje odpowiadajace genetycznosci algorytmu	#
+#####################################################
+
 # Liczy srednia z przewidywan oraz blad sredniokwadratowy dla niej
 # na podstawie listy uzytych modeli w danym osobniku
 #
@@ -343,143 +348,214 @@ mutation = function(generation, nMutate, predictions, dat, column, maxTrue) {
 	return (result)
 }
 
-# Nasz program
-# data		- data frame z danymi
-# mAmount	- ile zaburzonych modeli generujemy
-# N			- generuj kombinacje od N elementowych
-# col		- kolumna do przewidywania
-# epsilon	- jak roznica miedzy najlepszym z kolejnych rozmiarow jest mniejsza od tego to stop
-# nIter		- liczba iteracji przez ktora musi zachowac sie najlepszy
-# popSize	- rozmiar populacji
-# nSelect	- liczba wybieranych do kopulacji
-# nMutate	- liczba mutowanych
-# nExtend	- liczba tych, ktore sa rozszerzane o kolejny element
-# nRemove	- liczba najgorszych usuwanych z populacji (zostaje maksymalnie popSize-nRemove) przy dodawaniu kolejnego elementu zbiorow
-# return	- lista w formacie:
-#				models - wybrane modele
-#				midPrediction - srednia predykcja
-#				mse	- blad sredniokwadratowy
-alhe = function(data, mAmount=5, N=1, bestInIter=10, col=-1, epsilon = 0.01, nIter=10, popSize=50, nSelect=10, nMutate=2, nExtend=25, nRemove=25) {
+
+#########################
+#	Funkcja pomocnicza	#
+#########################
+
+# Usuwa duplikaty z populacji na podstawie uzytych modeli
+# Sortuje od najlepszych do najgorszych (rosnaco wg bledu sredniokwadratowego)
+#
+# population[list]	- lista osobnikow
+#
+# return[list]	- unikalna i posortowana lista osobnikow
+uniqueOrder = function(population) {
+	# zostaw tylko te unikalne osobniki
+	population <- population[!duplicated(lapply(population, function(p) p$predictionList))]
+
+	# posortuj od najlepszego do najgorszego
+	population <- population[order(sapply(population, function(p) p$rank))]
+
+	return (population)
+}
+
+#################################
+#	Glowna funkcja - program	#
+#################################
+
+# Glowny program uruchamiajacy algorytm
+# Generuje wstepna populacje, a nastepnie uruchamia petle zwiekszajac stopniowo wielkosc zbiorow
+#
+# dat[data.frame]	- ramka z pierwotnymi danymi dla ktorych uruchamiamy algorytm
+# mAmount[int]		- liczba zaburzonych modeli do wygenerowania
+# N[int]			- liczba uzytych modeli w osobniku dla pierwszej populacji (kombinacje N elementowe uzytych modeli)
+# bestInIter[int]	- liczba iteracji zwiekszania licznosci modeli przez ktora musi sie zachowac najlepszy osobnik zeby zakonczyc dzialanie algorytmu
+# col[string]		- kolumna(etykieta) ktora chcemy przewidywac, gdy -1 wybierana ostatnia kolumna
+# epsilon[double]	- roznica w ocenie najlepszych osobnikow kolejnych populacji po osiagnieciu ktorej nastepuje koniec dzialania algorytmu
+# nIter[int]		- liczba iteracji przez ktora najlepszy osobnik sie nie zmienia i po ktorej zostaje rozszerzona liczba modeli w osobnikach
+# popSize[int]		- maksymalny rozmiar populacji
+# nSelect[int]		- liczba osobnikow wybieranych do krzyzowania
+# nMutate[int]		- liczba osobnikow wybieranych do mutacji
+# nExtend[int]		- liczba osobnikow, ktore beda rozszerzane o kolejny model w zbiorze
+# nRemove[int]		- liczba osobnikow najgorszych usuwanych z populacji (zostaje maksymalnie popSize-nRemove) - przy dodawaniu kolejnego elementu zbiorow
+#
+# return[data.frame]	- ramka z wynikami w formacie:
+#			$models			- lista wybranych modeli w osobniku
+#			$midPrediction	- srednia predykcja osobnika
+#TODO
+#			$mse	- blad sredniokwadratowy
+alhe = function(dat, mAmount=5, N=1, bestInIter=10, col=-1, epsilon = 0.01, nIter=10, popSize=50, nSelect=10, nMutate=2, nExtend=25, nRemove=25) {
+	# jak nie podano to wez ostatnia kolumne i przewiduj ja
 	if (col == -1) {
-		nms <- names(data)
+		nms <- names(dat)
 		col <- nms[length(nms)]
 	}
-	
-	#podukuj dane
-	datas <- randDatas(data, mAmount)
-	
-	#znajdz modele
+
+
+	#########################
+	#	Generacja danych	#
+	#########################
+
+	# generuj zaburzone ramki danych
+	datas <- randDatas(dat, mAmount)
+
+	# utworz modele zaburzonych danych
 	models <- genModels(datas, col)
 
-	#policz dla nich predicty
-	predictions <- calculateEachModel(models, data)
-	
-	#przygotuj pierwsza populacje
-	#generuj osobnikow
+	# policz dla nich przedykcje
+	predictions <- calculateEachModel(models, dat)
+
+
+	#####################################
+	#	Generacja pierwszej populacji	#
+	#####################################
+
+	# generuj populacje o podanej liczbie uzytych modeli
 	pop <- generateFirstPopulation(N, length(models))
-	#a teraz wez je i policz dla nich srednie predykcje i bledy
-	# i nadaj im wlasciwa strukture
-	population <- calculatePredictions(predictions, pop, data, col )
-	
-	#zostaw tylko te unikalne osobniki
-	population <- population[!duplicated(lapply(population, function(p) p$predictionList))]
-	
-	#po sortuj od najlepszego do najgorszego
-	population <- population[order(sapply(population, function(p) p$rank))]
-	
-	#zapamietaj ranking najlepszego
+
+	# utworz liste osobnikow na podstawie wygenerowanej populacji
+	# i nadaj im wlasciwa strukture osobnikow
+	population <- calculatePredictions(predictions, pop, dat, col)
+
+	# zostaw unikalne i posortuj
+	population <- uniqueOrder(population)
+
+
+	#############################################
+	#	Ukonkretnienie zmiennych decyzyjnych	#
+	#############################################
+
+	# ranking najlepszego i numer iteracji w ktorej powstal
 	bestOneRank <- population[[1]]$rank
 	bestOneIter <- 1
-	
-	#ranking poprzedniego najlepszego w danym rozmiarze
-	diff = 99999
-	
-	#dane warunku stopu
+
+	# ranking poprzedniego najlepszego w danym rozmiarze	
 	oldBestRank = population[[1]]$rank
+
+	# warunki stopu i poczatkowe wartosci
+	diff = 99999
+	# licznosci modeli
 	n <- N
+	# licznik iteracji
 	iterCount = 1
-	
+	# liczba rozszerzen modeli(iteracji) od ktorych utrzymuje sie najlepszy
 	sameInIter = 0
-	
-	#let's roll the ball
-	#iterujemy po maksymalnej licznosci podzbiorow
-	#do poki roznica pommiedzy pokoleniami > eps lub do liczby modeli
-	while ( diff > epsilon || sameInIter < bestInIter) {
+
+
+	#########################
+	#	Petla algorytmu		#
+	#########################
+
+	# iterujemy po maksymalnej licznosci podzbiorow
+	# dopoki roznica pommiedzy pokoleniami > epsilon lub
+	#	utrzymuje sie najlepszy od bestInIter zwiekszen modeli
+	#	lub do uzytej maksymalnej liczby modeli
+
+	while (diff > epsilon || sameInIter < bestInIter) {
 #		print(n)
 #		print("------------------------------")
-		toCopulate <- selection(population, min(nSelect, length(population)))
-		
-		children <- copulation(toCopulate, predictions, data, col, n)
-		nextGeneration <- mutation(children, nMutate, predictions, data, col, n)
-		
-		#teraz trzeba dorzucic next gen do population
-		population <- c(population, nextGeneration)
-		
-		#zostawic tylko unikalne osobniki
-		population <- population[!duplicated(lapply(population, function(p) p$predictionList))]
 
-		#posortowac wedlug rankingu (najlepszy na poczatku)
-		population <- population[order(sapply(population, function(p) p$rank))]
-		
-		#sprawdz czy populacja nie urosla nam za bardzo
-		if(length(population) > popSize) {
-			#jesli jest za duza to trzeba odciac ostatnich zeby bylo ok
+		# wybieramy osobniki do krzyzowania
+		toCopulate <- selection(population, min(nSelect, length(population)))
+
+		# krzyzujemy osobniki
+		children <- copulation(toCopulate, predictions, dat, col, n)
+		# mutujemy dzieci
+		nextGeneration <- mutation(children, nMutate, predictions, dat, col, n)
+
+		# rozszerzamy populacje
+		population <- c(population, nextGeneration)
+
+		# zostaw unikalne i posortuj
+		population <- uniqueOrder(population)
+
+
+		#####################
+		#	Sprawdzenie		#
+		#####################
+
+		# sprawdz czy populacja nie urosla nam za bardzo
+		if (length(population) > popSize) {
+			# jesli jest za duza, odcinamy najslabsze osobniki
 			population <- population[1:popSize]
 		}
-		
-		#sprawdzamy besta
-		if(bestOneRank > population[[1]]$rank) {
+
+		# sprawdz czy jest lepszy od bierzacego
+		if (bestOneRank > population[[1]]$rank) {
 			bestOneRank <- population[[1]]$rank
 			bestOneIter <- iterCount
-			
+
+			# ustaw ze osobnik utrzymuje sie od 0 zwiekszen modeli 
 			sameInIter = 0
 		}
-		
-		#sprawdz czy nie czas rozszerzyc populacje
-		if( iterCount - bestOneIter > nIter) {
+
+		# sprawdz czy nie czas rozszerzyc populacje
+		if (iterCount - bestOneIter > nIter) {
+
+			#########################################################
+			#	Rozszerzenie populacji - aktualizacja zmiennych		#
+			#########################################################
+
+			# resetujemy licznik iteracji
 			iterCount = 1
-			#sprawdz czy to juz nie koniec modeli
-			if( n == length(models)) {
+
+			# sprawdz czy to juz nie koniec modeli (czy jest co rozszerzac)
+			if(n == length(models)) {
 				break
 			} else {
-				#zwieksz maksymalny rozmiar
-				n <- n+1
-				
-				#oblicz roznice miedzy najlepszym w poprzednim rozmiarza a nowym
+				# zwieksz maksymalny rozmiar
+				n = n + 1
+
+				# oblicz roznice miedzy najlepszym w poprzednim osobnikiem a nowym
 				diff = oldBestRank - bestOneRank
-#TODO tu zazwyczaj 0 jest bo najlepszy jest zzawsze ten sam
-				print("!!!!!!!!!!!!!")
-				print(c(diff, oldBestRank, bestOneRank, sameInIter))
-				
+
+				# jezeli sie utrzymuje od poprzedniego rozszerzenia modeli to bedzie 0 -
+				# tj. zwiekszamy licznik utrzymywania sie osobnika w kolejnych rozszerzeniach modeli
 				if (diff == 0) {
 					sameInIter = sameInIter + 1
+				} else {
+					# mamy nowego najelpszego osobinka wiec zapisujemy
+					# aktualnego najlepszego jako poprzendiego
+					oldBestRank = bestOneRank
 				}
-				
-				#zapisz aktualnego najlepszego jako poprzendiego
-				oldBestRank = bestOneRank
 			}
-			
-			#a teraz dodaj do populacji osobiki o wieszej ilosci modeli
+
+
+			#####################################################
+			#	Rozszerzenie populacji - zwiekszenie modeli		#
+			#####################################################
+
+			# a teraz dodaj do populacji osobiki o wieszej ilosci modeli
+			# zeby dac wieksza szanse nowym osobnikom to pierwsza selekcja jest na rozszerzonej liscie (dlugosc max: popSize - nRemove + nExtend)
+
+			# wybierz osobniki do rozszerzenia
 			toExtend <- selection(population, min(length(population), nExtend))
+
+			# ograniczenie rozmirau populacji
 			population <- population[1:min(length(population), popSize - nRemove)]
-			extended <- extendEntities(toExtend, predictions, data, col)
-			
-			#teraz dorzuc to do populacji
+
+			# generuj rozszerzone osobniki
+			extended <- extendEntities(toExtend, predictions, dat, col)
+
+			# dolacz rozszerzone osobniki do populacji
 			population <- c(population, extended)
-			
-			#zostawic tylko unikalne osobniki
-			population <- population[!duplicated(lapply(population, function(p) p$predictionList))]
 
-			#posortowac wedlug rankingu (najlepszy na poczatku)
-			population <- population[order(sapply(population, function(p) p$rank))]
-			
-			#zeby dac wieksza szanse nowym osobnikom to pierwsza selekcja jest na rozszerzonej liscie (dlugosc max: popSize - nRemove + nExtend)
+			# zostaw unikalne i posortuj
+			population <- uniqueOrder(population)
 		} else {
-			#jak nei czas to zwieksz licnzik iteracji
-			iterCount <- iterCount +1
+			# jak nie czas na zwiekszenie licznosci modeli to zwieksz licznik iteracji
+			iterCount = iterCount + 1
 		}
-
-		print(c(n, diff, sameInIter))
 	}
 	
 	#stworzmy wynik
