@@ -29,7 +29,15 @@ mse = function(a, b) {
 # data		- data.frame z danymi
 # return	- dafa.frame z losowymi wierszami
 randRows = function(data) {
-	return (data[sample(nrow(data), sample.int(nrow(data), 1), replace=T),])
+	while (TRUE) {
+		r <- data[sample(nrow(data), sample.int(nrow(data), 1), replace=T),]
+
+		if (nrow(r) > 2) {
+			break
+		}
+	}
+
+	return (r)
 }
 
 # Losujemy rozne paczki wierszodanych
@@ -321,7 +329,7 @@ mutation = function(generation, nMutate, predictions, data, column, maxTrue) {
 #				models - wybrane modele
 #				midPrediction - srednia predykcja
 #				mse	- blad sredniokwadratowy
-alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=50, nSelect=10, nMutate=2, nExtend=25, nRemove=25) {
+alhe = function(data, mAmount=5, N=1, bestInIter=10, col=-1, epsilon = 0.01, nIter=10, popSize=50, nSelect=10, nMutate=2, nExtend=25, nRemove=25) {
 	if (col == -1) {
 		nms <- names(data)
 		col <- nms[length(nms)]
@@ -360,10 +368,13 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 	oldBestRank = population[[1]]$rank
 	n <- N
 	iterCount = 1
+	
+	sameInIter = 0
+	
 	#let's roll the ball
 	#iterujemy po maksymalnej licznosci podzbiorow
 	#do poki roznica pommiedzy pokoleniami > eps lub do liczby modeli
-	while ( diff > epsilon ) {
+	while ( diff > epsilon || sameInIter < bestInIter) {
 #		print(n)
 #		print("------------------------------")
 		toCopulate <- selection(population, min(nSelect, length(population)))
@@ -390,10 +401,13 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 		if(bestOneRank > population[[1]]$rank) {
 			bestOneRank <- population[[1]]$rank
 			bestOneIter <- iterCount
+			
+			sameInIter = 0
 		}
 		
 		#sprawdz czy nie czas rozszerzyc populacje
 		if( iterCount - bestOneIter > nIter) {
+			iterCount = 1
 			#sprawdz czy to juz nie koniec modeli
 			if( n == length(models)) {
 				break
@@ -405,7 +419,11 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 				diff = oldBestRank - bestOneRank
 #TODO tu zazwyczaj 0 jest bo najlepszy jest zzawsze ten sam
 				print("!!!!!!!!!!!!!")
-				print(c(diff, oldBestRank, bestOneRank))
+				print(c(diff, oldBestRank, bestOneRank, sameInIter))
+				
+				if (diff == 0) {
+					sameInIter = sameInIter + 1
+				}
 				
 				#zapisz aktualnego najlepszego jako poprzendiego
 				oldBestRank = bestOneRank
@@ -431,7 +449,7 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 			iterCount <- iterCount +1
 		}
 
-		print(c(n, diff))
+		print(c(n, diff, sameInIter))
 	}
 	
 	#stworzmy wynik
@@ -450,5 +468,5 @@ alhe = function(data, mAmount=5, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=
 	print(population[[1]]$rank)
 	##############################################################################
 
-	return (result)
+#	return (result)
 }
