@@ -225,7 +225,7 @@ generateFirstPopulation = function(maxNmbTrue, modelSize) {
 #
 # return[list]	- podlista (z listy) populacji zawierajaca wylosowane osobniki
 selection = function(population, amount) {
-	result <- population[sample.int(length(population), amount)]
+	result <- population[sample.int(length(population), amount, replace=T)]
 
 	return (result)
 }
@@ -496,7 +496,7 @@ alhe = function(dat, mAmount=5, regression=lm, bestInIter=10, N=1, col=-1, epsil
 
 	while (diff > epsilon || sameInIter < bestInIter) {
 		# wybieramy osobniki do krzyzowania
-		toCopulate <- selection(population, min(nSelect, length(population)))
+		toCopulate <- selection(population, nSelect)
 
 		# krzyzujemy osobniki
 		children <- copulation(toCopulate, predictions, dat, col, n)
@@ -569,7 +569,7 @@ alhe = function(dat, mAmount=5, regression=lm, bestInIter=10, N=1, col=-1, epsil
 			# zeby dac wieksza szanse nowym osobnikom to pierwsza selekcja jest na rozszerzonej liscie (dlugosc max: popSize - nRemove + nExtend)
 
 			# wybierz osobniki do rozszerzenia
-			toExtend <- selection(population, min(length(population), nExtend))
+			toExtend <- selection(population, nExtend)
 
 			# ograniczenie rozmirau populacji
 			population <- population[1:min(length(population), popSize - nRemove)]
