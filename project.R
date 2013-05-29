@@ -1,15 +1,47 @@
+#########################
+#	Najprostsze uzycie	#
+#########################
+
+## ladujemy zbior danych do zmiennej np. a
+#	library(mlbench)
+#	library(rpart)
+#	data(BostonHousing)
+#	a <- BostonHousing
+#
+## uruchamiamy i zapisujemy wynik do zmiennej np. z
+#	z <- alhe(a, regression=rpart)
+## lub z uzyciem regresji liniowej, po prostu
+##	z <- alhe(a)
+#
+## otrzymujemy informacje debugowe np.
+##	> z <- alhe(a, regression=rpart)
+##	[1] "Ilosc uzytych modeli:"
+##	[1] 2
+##	[1] "Uzyskany blad:"
+##	[1] 12.23499
+##	[1] "Blad dla calego zbioru danych:"
+##	[1] 16.24467
+##	[1] "Uzyskana poprawa (jak dodania):"
+##	[1] 4.009681
+#
+## znaleziony osobnik zapisany w zmiennej z w postaci listy:
+##	$models			- lista uzytych modeli regresji
+##	$midPrediction	- usredniona predykcja uzytych modeli
+##	$rank			- sredni blad sredniokwadratowy dla uzyskanego wyniku z przewidywana kolumna
+
+
 #####################################
 #	Ladowanie pakietow i danych		#
 #####################################
 
-# Ladujemy pakiet z przykladowymi zbiorami danych
-library(mlbench)
-
-# Ladujemy pakiet do uzycia potem regresji na strukturze drzewiastej, a nie liniowej
-library(rpart)
-
-# Ladujemy przykladowe dane
-data(BostonHousing)
+## Ladujemy pakiet z przykladowymi zbiorami danych
+#library(mlbench)
+#
+## Ladujemy pakiet do uzycia potem regresji na strukturze drzewiastej, a nie liniowej
+#library(rpart)
+#
+## Ladujemy przykladowe dane
+#data(BostonHousing)
 
 
 #########################################
@@ -75,19 +107,19 @@ randDatas = function(dat, n=3) {
 
 # Generuje liste modeli dla zadanej kolumny identyfikowanej podana etykieta
 #
-# dat[data.frame]	- pierwotne dane z ktorych generowalismy zaburzone zbiory danych
+# datas[list]		- lista ramek z zaburzonymi zbiorami danych
 # col[string]		- nazwa kolumny(etykiety) do przewidywania
 # reg[function]		- funkcja uzywana do utworzenia modelu regresji {lm|rpart}
 #
 # return[list]	- lista utworzonych modeli dla zadanych zbiorow danych
-genModels = function(dat, col, reg=lm) {
+genModels = function(datas, col, reg=lm) {
 	res <- list()
 
 	# przewidujemy podana kolumne na podstawie wszystkich innych
 	frm <- paste(col, ".", sep=" ~ ")
 
-	for (i in 1:length(dat)) {
-		res[[i]] <- reg(formula(frm), dat[[i]])
+	for (i in 1:length(datas)) {
+		res[[i]] <- reg(formula(frm), datas[[i]])
 	}
 	
 	return (res)
@@ -375,11 +407,13 @@ uniqueOrder = function(population) {
 
 # Glowny program uruchamiajacy algorytm
 # Generuje wstepna populacje, a nastepnie uruchamia petle zwiekszajac stopniowo wielkosc zbiorow
+# Minimalizujemy blad sredniokwadratowy osobnikow
 #
 # dat[data.frame]	- ramka z pierwotnymi danymi dla ktorych uruchamiamy algorytm
-# mAmount[int]		- liczba zaburzonych modeli do wygenerowania
-# N[int]			- liczba uzytych modeli w osobniku dla pierwszej populacji (kombinacje N elementowe uzytych modeli)
+# mAmount[int]		- liczba zaburzonych modeli do wygenerowania, minimum 2
+# regression[function]	- funkcja uzywana do utworzenia modelu regresji {lm|rpart}
 # bestInIter[int]	- liczba iteracji zwiekszania licznosci modeli przez ktora musi sie zachowac najlepszy osobnik zeby zakonczyc dzialanie algorytmu
+# N[int]			- liczba uzytych modeli w osobniku dla pierwszej populacji (kombinacje N elementowe uzytych modeli)
 # col[string]		- kolumna(etykieta) ktora chcemy przewidywac, gdy -1 wybierana ostatnia kolumna
 # epsilon[double]	- roznica w ocenie najlepszych osobnikow kolejnych populacji po osiagnieciu ktorej nastepuje koniec dzialania algorytmu
 # nIter[int]		- liczba iteracji przez ktora najlepszy osobnik sie nie zmienia i po ktorej zostaje rozszerzona liczba modeli w osobnikach
@@ -390,11 +424,10 @@ uniqueOrder = function(population) {
 # nRemove[int]		- liczba osobnikow najgorszych usuwanych z populacji (zostaje maksymalnie popSize-nRemove) - przy dodawaniu kolejnego elementu zbiorow
 #
 # return[data.frame]	- ramka z wynikami w formacie:
-#			$models			- lista wybranych modeli w osobniku
+#			$models			- lista wybranych modeli uzytych w osobniku
 #			$midPrediction	- srednia predykcja osobnika
-#TODO
-#			$mse	- blad sredniokwadratowy
-alhe = function(dat, mAmount=5, N=1, bestInIter=10, col=-1, epsilon = 0.01, nIter=10, popSize=50, nSelect=10, nMutate=2, nExtend=25, nRemove=25) {
+#			$rank			- blad sredniokwadratowy
+alhe = function(dat, mAmount=5, regression=lm, bestInIter=10, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=50, nSelect=10, nMutate=2, nExtend=25, nRemove=25) {
 	# jak nie podano to wez ostatnia kolumne i przewiduj ja
 	if (col == -1) {
 		nms <- names(dat)
@@ -410,7 +443,7 @@ alhe = function(dat, mAmount=5, N=1, bestInIter=10, col=-1, epsilon = 0.01, nIte
 	datas <- randDatas(dat, mAmount)
 
 	# utworz modele zaburzonych danych
-	models <- genModels(datas, col)
+	models <- genModels(datas, col, regression)
 
 	# policz dla nich przedykcje
 	predictions <- calculateEachModel(models, dat)
@@ -462,9 +495,6 @@ alhe = function(dat, mAmount=5, N=1, bestInIter=10, col=-1, epsilon = 0.01, nIte
 	#	lub do uzytej maksymalnej liczby modeli
 
 	while (diff > epsilon || sameInIter < bestInIter) {
-#		print(n)
-#		print("------------------------------")
-
 		# wybieramy osobniki do krzyzowania
 		toCopulate <- selection(population, min(nSelect, length(population)))
 
@@ -557,22 +587,43 @@ alhe = function(dat, mAmount=5, N=1, bestInIter=10, col=-1, epsilon = 0.01, nIte
 			iterCount = iterCount + 1
 		}
 	}
-	
-	#stworzmy wynik
-#	result = list(models=list(), midPrediction=population[[1]]$midPrediction, mse=population[[1]]$rank)
-#	position = 1
-#	for(i in length(population[[1]]$predictionList)) {
-#		if(population[[1]]$predictionList[[i]]) {
-#			result[[1]]$models[[position]] <- models[[i]]
-#			position <- position +1
-#		} 
-#	}
-	
-	#tylko dla debugu#############################################################
-	print("Wynik:")
-#	print(population[[1]]$predictionList)
-	print(population[[1]]$rank)
-	##############################################################################
 
-#	return (result)
+
+	#################################################
+	#	Koniec algorytmu - wyciagniecie wynikow		#
+	#################################################
+
+	result = list(models=list(), midPrediction=population[[1]]$midPrediction, rank=population[[1]]$rank)
+
+	pos = 1
+	for (i in 1:length(population[[1]]$predictionList)) {
+		if (population[[1]]$predictionList[[i]]) {
+			result$models[[pos]] <- models[[i]]
+			pos = pos + 1
+		}
+	}
+
+
+	#####################
+	#	Debug stats		#
+	#####################
+
+	print("Ilosc uzytych modeli:")
+	print(length(result$models))
+
+	print("Uzyskany blad:")
+	print(result$rank)
+
+
+	# tworzymy model, liczymy predykcje i blad sredniokwadratowy dla niezaburzonego zbioru danych
+	modelAll <- genModels(list(dat), col, regression)[[1]]
+	rankAll <- mse(predict(modelAll, dat), dat[,col])
+
+	print("Blad dla calego zbioru danych:")
+	print(rankAll)
+
+	print("Uzyskana poprawa (jak dodania):")
+	print(rankAll - result$rank)
+
+	return (result)
 }
