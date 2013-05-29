@@ -1,36 +1,53 @@
-# Przykladowe wzglednie liniowe dane
-a <- sampleData <- data.frame(age=18:29, height=c(76.1,77,78.1,78.2,78.8,79.7,79.9,81.1,81.2,81.8,82.8,83.5))
-a1 <- data.frame(age=c(18,20,22,24), height=c(76.1,78.1,78.8,79.9))
-a2 <- data.frame(age=c(19,21,23,25,27), height=c(77,78.2,79.7,81.1,81.8))
-a3 <- data.frame(age=c(18,21,29), height=c(76.1,78.2,83.5))
-a4 <- data.frame(age=c(19,20,24,29), height=c(77,78.1,79.9,83.5))
-a5 <- data.frame(age=c(22,23,28), height=c(78.8,79.7,82.8))
-la <- list(a1,a2,a3,a4,a5)
-#sampleCombinations <- combn(1:1, 1)
-#sampleModels <- list()
-#sampleModels[[1]] <- lm(height~., sampleData)
-##sampleModels[[1]] <- lm(height~., randRows(sampleData))
-##sampleModels[[2]] <- lm(height~., randRows(sampleData))
-##sampleModels[[3]] <- lm(height~., randRows(sampleData))
-##sampleCombinations <- combn(1:3, 2)
+#####################################
+#	Ladowanie pakietow i danych		#
+#####################################
+
+# Ladujemy pakiet z przykladowymi zbiorami danych
+library(mlbench)
+
+# Ladujemy pakiet do uzycia potem regresji na strukturze drzewiastej, a nie liniowej
+library(rpart)
+
+# Ladujemy przykladowe dane
+data(BostonHousing)
 
 
+#########################################
+#	Przykladowe wzglednie liniowe dane	#
+#########################################
+
+#a <- data.frame(age=18:29, height=c(76.1,77,78.1,78.2,78.8,79.7,79.9,81.1,81.2,81.8,82.8,83.5))
+#a1 <- data.frame(age=c(18,20,22,24), height=c(76.1,78.1,78.8,79.9))
+#a2 <- data.frame(age=c(19,21,23,25,27), height=c(77,78.2,79.7,81.1,81.8))
+#a3 <- data.frame(age=c(18,21,29), height=c(76.1,78.2,83.5))
+#a4 <- data.frame(age=c(19,20,24,29), height=c(77,78.1,79.9,83.5))
+#a5 <- data.frame(age=c(22,23,28), height=c(78.8,79.7,82.8))
+#la <- list(a1,a2,a3,a4,a5)
 
 
-# Oblicza blad sredniokwadratowy
-# a			- pierwszy wektor danych
-# b			- drugi wektor danych
-# return	- obliczony blad
+#########################
+#	Funkcje pomocnicze	#
+#########################
+
+# Oblicza srednia z obliczonych parami bledow sredniokwadratowych
+#
+# a[vector]	- pierwszy wektor danych
+# b[vector]	- drugi wektor danych
+#
+# return[double]	- obliczony sredni blad sredniokwadratowy
 mse = function(a, b) {
-	return (mean( (a - b)^2, na.rm = TRUE))
+	return (mean((a - b)^2, na.rm = TRUE))
 }
 
-# Losujemy wiersze ze zwracaniem
-# data		- data.frame z danymi
-# return	- dafa.frame z losowymi wierszami
-randRows = function(data) {
+# Losuje wiersze ze zwracaniem
+# Co najmniej 2 w celu wyeliminowania wartosci NA dla modelu regresji
+#
+# dat[data.frame]	- dane do losowania z nich wierszy
+#
+# return[data.frame]	- wylosowane wiersze (co najmniej 2)
+randRows = function(dat) {
 	while (TRUE) {
-		r <- data[sample(nrow(data), sample.int(nrow(data), 1), replace=T),]
+		r <- dat[sample(nrow(dat), sample.int(nrow(dat), 1), replace=T),]
 
 		if (nrow(r) > 2) {
 			break
@@ -40,189 +57,195 @@ randRows = function(data) {
 	return (r)
 }
 
-# Losujemy rozne paczki wierszodanych
-# data		- data.frame z danymi
-# n			- ile modeli losujemy
-# return	- lista wylosowanych data.frame
-randDatas = function(data, n=3) {
+# Generuje losowe ramki danych z wylosowanych wierszy
+#
+# dat[data.frame]	- dane do losowania z nich
+# n[int]			- liczba losowanych modeli
+#
+# return[list]	- lista wygenerowanych ramek z losowanymi wierszami z danych
+randDatas = function(dat, n=3) {
 	datas <- list()
-	
+
 	for (i in 1:n) {
-		datas[[i]] <- randRows(data)
+		datas[[i]] <- randRows(dat)
 	}
 
 	return (datas)
 }
 
-# Generujemy liste modeli dla zadanego parametru
-# datas		- lista danych jako data.frame
-# col		- nazwa kolumny do przewidywania
-# return	- lista modeli
-genModels = function(datas, col) {
+# Generuje liste modeli dla zadanej kolumny identyfikowanej podana etykieta
+#
+# dat[data.frame]	- pierwotne dane z ktorych generowalismy zaburzone zbiory danych
+# col[string]		- nazwa kolumny(etykiety) do przewidywania
+# reg[function]		- funkcja uzywana do utworzenia modelu regresji {lm|rpart}
+#
+# return[list]	- lista utworzonych modeli dla zadanych zbiorow danych
+genModels = function(dat, col, reg=lm) {
 	res <- list()
 
+	# przewidujemy podana kolumne na podstawie wszystkich innych
 	frm <- paste(col, ".", sep=" ~ ")
 
-	for (i in 1:length(datas)) {
-		res[[i]] <- lm(formula(frm), datas[[i]])
+	for (i in 1:length(dat)) {
+		res[[i]] <- reg(formula(frm), dat[[i]])
 	}
 	
 	return (res)
 }
 
-# Obliczamy przewidywania dla wszystkich pojedynczych modeli zeby potem operowac juz tylko na wartosciach
-# models	- lista modeli
-# data		- poczatkowe niezaburzone dane
-# return	- lista predictow
-calculateEachModel = function(models, data) {
+# Oblicza przewidywania dla wszystkich pojedynczych modeli,
+# aby potem mozliwe bylo operowanie tylko na wartosciach tych przewidywan
+#
+# models[list]		- lista modeli
+# dat[data.frame]	- pierwotne dane
+#
+# return[list]	- lista wektorow wartosci przewidywanych dla kolejnych modeli
+calculateEachModel = function(models, dat) {
 	result <- list()
-	
-	for ( i in 1:length(models)) {
-		result[[i]] <- predict(models[[i]], data)
+
+	for (i in 1:length(models)) {
+		result[[i]] <- predict(models[[i]], dat)
 	}
-	
+
 	return (result)
 }
 
-#zamienia format z tych wektorow na to na czym operujemy czyli:
-#	phenotype	osobink
-#		predictionList	lista wartosci boolowskich, ktore predykcje ten osobnik uwzglednia np {true, false, true} to osobnik z predykcji 1 i 3
-#		midPrediction	usredniona predykcja
-#		rank			blad srednio kwadratowy (minimalizujemy)
-# Funkcja wypelnia do postaci gotowego osobnika i zwraca liste osobnikow
-# liczy srednia predykcje i blad sredniokwadratowy (rank)
-# predictions	predykcje dla kolejnych modeli
-# population	wektory true, false z kotrych powstana osobiki
-# data			poczatkowe, niezaburzone dane
-# column		kolumna do przewidywania
-calculatePredictions = function(predictions, population, data, column) {
+# Liczy srednia z przewidywan oraz blad sredniokwadratowy dla niej
+# na podstawie listy uzytych modeli w danym osobniku
+#
+# Funkcja tworzy osobniki z podanych danych i zwraca ich liste
+#
+# predictions[list]	- lista wektorow predykcji dla kolejnych modeli
+# population[list]	- lista wektorow z wartosciami TURE i FALSE, gdzie TRUE na danej pozycji oznacza uzyty model w osobniku
+# dat[data.frame]	- pierwotne dane
+# column[string]	- kolumna(etykieta) ktora przewidujemy
+#
+# return[list]	- lista wygenerowanych osobnikow, gdzie osobnik reprezentuje nastepujaca ramka:
+#			$predictionList[vector]	- lista wartosci boolowskich, oznaczajaca ktore modele zostaly uzyte do przewidywan np {true, false, true} to osobnik z predykcji 1 i 3
+#			$midPrediction[vector]	- usrednione przewidywania
+#			$rank[double]			- blad sredniokwadratowy predykcji (wartosc ktora minimalizujemy)
+calculatePredictions = function(predictions, population, dat, column) {
 	result <- list()
-	
-	for( i in 1:length(population)) {
+
+	for(i in 1:length(population)) {
 		result[[i]] = list(predictionList=population[[i]], midPrediction=0, rank=0)
-		
+
 		usedPredictions = c()
-		position = 1
-		
-		#znajdz wszystkie modele uzyte w tym osobniku
-		for( j in 1:length(population[[i]])) {
+		firstOne = TRUE
+
+		# znajdz wszystkie modele uzyte w tym osobniku
+		for(j in 1:length(population[[i]])) {
 			if(population[[i]][[j]]) {
-				if(position ==1) {
+				# jezeli uzyty model, to dodaj jako kolumny w celu wyliczenia pozniej parami srednich predykcji 
+				if (firstOne) {
 					usedPredictions <- cbind(predictions[[j]])
-					position <- position +1
+					firstOne = FALSE
 				} else {
 					usedPredictions <- cbind(usedPredictions, predictions[[j]])
 				}
 			}
 		}
-		
-		#policz srednia predykcje i wrzuc ja w wektor kolumnowy
+
+		# policz srednia predykcje
 		result[[i]]$midPrediction <- rowMeans(usedPredictions)
 		
-		#policz blad sredniokwadratowy
-		result[[i]]$rank <- mse(result[[i]]$midPrediction, data[,column])
+		# policz blad sredniokwadratowy
+		result[[i]]$rank <- mse(result[[i]]$midPrediction, dat[,column])
 	}
-	
+
 	return (result)
 }
 
-# Znajduje index listy w podanej liscie na ktorej blad srednio kw jest najmniejszy
-# combined	- lista zbiorow modeli
-# return	- indeks na liscie ktora kombinacja modeli ma najmniejszy blad srednio kw
-findMinIndex = function(combined) {
-	resIndex <- 1
-	resMin <- combined[[1]]$mse
-
-	for (i in 1:length(combined)) {
-		if (resMin > combined[[i]]$mse) {
-			resIndex <- i
-			resMin <- combined[[i]]$mse
-		}
-	}
-
-	return (resIndex)
-}
-
-# Generuje pierwsza populacje jako wsystkie kombinacje o rozmiarze maxymalnym maxNmbTrue
-# maxNmbTrue	- maxymalnie tyle modeli zaliczonych do osobnika
-# modelSize		- ogolna liczba modeli
+# Generuje pierwsza populacje jako wsystkie kombinacje o rozmiarze maksymalnym maxNmbTrue
+# gdzie populacja to wektory wartosci TRUE i FALSE reprezentujace uzyte modele w osobniku
+#
+# maxNmbTrue[int]	- maksymalna ilosc modeli uzytych w osobniku
+# modelSize[int]	- liczba modeli do utworzenia z nich kombinacji
+#
+# return[list]	- lista wektorow definiujacych osobniki w populacji
 generateFirstPopulation = function(maxNmbTrue, modelSize) {
 	result = list()
-	
-	position = 1
+
+	pos = 1
 	for (i in 1:maxNmbTrue) {
+		# tworzymy kombinacje dla zadanej liczby modeli
 		combinations <- combn(1:modelSize, i)
+
 		for(j in 1:ncol(combinations)) {
-			result[[position]] <- 1:modelSize %in% combinations[,j]
-			position <- position + 1
+			# tworzymy wektory opisujace osobniki
+			result[[pos]] <- 1:modelSize %in% combinations[,j]
+			pos <- pos + 1
 		}
 	}
-	
+
 	return(result)
 }
 
-#Wybiera z populacji osobniki do kopulacji
-# population	- populacja
-# amount		- liczba osobnikow do wybrania
-# return		- podlista listy population zawierajaca wybrane osobniki
+# Wybiera z populacji losowe osobniki do reprodukcji
+#
+# population[list]	- (populacja) lista wektorow identyfikujacych osobniki
+# amount[int]		- liczba osobnikow do wybrania
+#
+# return[list]	- podlista (z listy) populacji zawierajaca wylosowane osobniki
 selection = function(population, amount) {
 	result <- population[sample.int(length(population), amount)]
 
 	return (result)
 }
 
-#Rozszerza populacje o nowy element w kazdym zbiorze
-# toExtend	- osobniki do rozszerzenia
-# predictions - uzywane predykcje odpowiadajace modelom
-# data			- nie zaburzone dane
-# column			- przewidywana kolumna
-#return			- nowe osobniki do populacji
-extendEntities = function(toExtend, predictions, data, column) {
-	
+# Rozszerza populacje o nowy element w kazdym zbiorze
+# tj. dodaje kolejny model jako uzyty w danym osobniku i oblicza dla niego srednia predykcje i blad sredniokwadratowy
+#
+# toExtend[list]	- lista osobnikow do rozszerzenia
+# predictions[list]	- lista wektorow predykcji dla kolejnych modeli
+# dat[data.frame]	- pierwotne dane
+# column[string]	- kolumna ktora przewidujemy
+#
+# return[list]		- lista nowych rozszerzeonych osobnikow
+extendEntities = function(toExtend, predictions, dat, column) {
 	newCombinations = list()
+
 	for(i in 1:length(toExtend)) {
 		newCombinations[[i]] <- toExtend[[i]]$predictionList
+
+		# wezmy nieuzywane modele
+		unusedModels <- which(toExtend[[i]]$predictionList == FALSE)
 		
-		unusedModels <- which(toExtend[[i]]$predictionList == F)
+		# gdy wektor ma jedna pozycje, funkcja sample pobiera liczbe zamiast wektora o dlugosci 1
+		# dlatego w celu unikniecia bledow rozwazamy te dwa przypadki
+		# przypisujac losowo wybrane modele do osobnika
 		if (length(unusedModels) == 1) {
-			newCombinations[[i]][unusedModels[1]] <- T
+			newCombinations[[i]][unusedModels[1]] <- TRUE
 		} else {
-			newCombinations[[i]][sample(unusedModels, 1)] <- T
+			newCombinations[[i]][sample(unusedModels, 1)] <- TRUE
 		}
-		#unusedModels = c()
-		#position =1
-		##stworz liste modeli nie bedacych w tym zbiorze
-		#for(j in 1:length(toExtend[[i]]$predictionList)) {
-		#	if(! toExtend[[i]]$predictionList[[j]]) {
-		#		unusedModel[[position]] <- j
-		#		position <- position + 1
-		#	}
-		#}
-		#
-		##wylosuj element do dodania
-		#newCombinations[[i]][[unusedModels[[sample.int(length(unusedModels))]]]] <- TRUE
 	}
-	
-	result <- calculatePredictions(predictions, newCombinations, data, column)
-	
+
+	# obliczamy wartosci identyfikujace osobnika z nowymi kombinacjami modeli
+	result <- calculatePredictions(predictions, newCombinations, dat, column)
+
 	return (result)
 }
 
-# Kopuluje 2 zbiory
-# set1		- pierwszy zbiór modeli
-# set2		- drugi zbiór modeli
-# maxTrue	- maksymalna licznosc nowego zbioru
+# Krzyzuje dwa osobniki reprezentowane przez uzyte modele i obliczony blad sredniokwadratowy
+#
+# set1[vector]	- pierwszy wektor uzytych modeli jako wartosci TRUE i FALSE na odpowiadajacych modelom pozycjach
+# set2[vector]	- drugi wektor uzytych modeli
+# maxTrue[int]	- maksymalna ilosc uzytych modeli w nowym osobinku
+# rank1[double]	- blad sredniokwadratowy pierwszego osobnika
+# rank2[double]	- blad sredniokwadratowy drugiego osobnika
+#
+# return[vector]	- wektor uzywanych modeli jako wartosci TRUE i FALSE odp. modelom
 copulateEntity = function(set1, set2, maxTrue, rank1, rank2) {
-		##nie wiem jak to zrobic zeby wybieral z ustalonym prawdopodobienstwem
 	sm = set1 | set2
-	w1 <- which(set1 == T)
-	w2 <- which(set2 == T)
+	w1 <- which(set1 == TRUE)
+	w2 <- which(set2 == TRUE)
 
 	w <- unique(append(w1, w2))
 
 	if (sum(sm) > maxTrue) {
-		# usuwamy losowe wystepujace tylko w osobniku z mniejszym rankingiem
-		if (rank1 < rank2) {
+		# usuwamy losowe wystepujace tylko w osobniku z mniejszym rankingiem (wiekszym bledem)
+		if (rank1 > rank2) {
 			r = w1
 		} else {
 			r = w2
@@ -234,82 +257,89 @@ copulateEntity = function(set1, set2, maxTrue, rank1, rank2) {
 		if (toRemoveAmount > length(r)) {
 			r = w
 		}
-		
+
 		if (length(r) == 1) {
-			sm[r] <- F
+			sm[r] <- FALSE
 		} else {
-			sm[sample(r, toRemoveAmount)] <- F
+			sm[sample(r, toRemoveAmount)] <- FALSE
 		}
 	}
 
 	return (sm)
 }
 
-#Krzyzowanie osobnikow
-# toCopulate	- osobniki do krzyzowania
-# predictions	- predykcje odpowiadajace modelom
-# data			- nie zaburzone dane
-# column		- kolumna
-# maxTrue		- maksymalna liczba modeli w osobniku
-#return			- osobniki po kopulacji
-copulation = function(toCopulate, predictions, data, column, maxTrue) {
+# Krzyzuje osobniki ze soba, kolejno osobnika z osobnikiem po prawej stronie,
+# a na koncu ostaniego z pierwszym
+#
+# toCopulate[list]	- lista osobnikow wybranych do krzyzowania
+# predictions[list]	- lista wektorow predykcji dla kolejnych modeli
+# dat[data.frame]	- pierwotne dane
+# column[string]	- kolumna(etykieta) ktora przewidujemy
+# maxTrue[int]		- maksymalna liczba uzytych modeli w osobniku
+#
+# return[list]		- lista osobnikow po krzyzowaniu
+copulation = function(toCopulate, predictions, dat, column, maxTrue) {
 	newSets = list()
-	#kopuluj kazdego z sasiadem po prawo
-	
+
+	# krzyzuj kazdego z sasiadem po prawej stronie
 	for(i in 1:(length(toCopulate) - 1)) {
 		newSets[[i]] <- copulateEntity(toCopulate[[i]]$predictionList, toCopulate[[i+1]]$predictionList, maxTrue,
-										toCopulate[[i]]$rank, toCopulate[[i+1]]$rank)
+										toCopulate[[i]]$rank,			toCopulate[[i+1]]$rank)
 	}
-	#a ostatni z pierwszym
+
+	# a ostatniego z pierwszym
 	newSets[[length(toCopulate)]] <- copulateEntity(toCopulate[[length(toCopulate)]]$predictionList, toCopulate[[1]]$predictionList, maxTrue,
-													toCopulate[[length(toCopulate)]]$rank, toCopulate[[1]]$rank)
-	
-	result <- calculatePredictions(predictions, newSets, data, column)
+													toCopulate[[length(toCopulate)]]$rank,				toCopulate[[1]]$rank)
+
+	# obliczamy wartosci identyfikujace osobnika po krzyzowaniu
+	result <- calculatePredictions(predictions, newSets, dat, column)
+
 	return (result)	
 }
 
-#Mutuje osobniki 
-# generation	- osobniki sposrod ktorych trzeba wybrac te do mutacji
-# nMutate		- liczba osobnikow do zmutowania
-# predictions	- predykcje odpowiadajace elementom
-# data			- poczatkowe nie zaburzone dane
-# column		- przewidywana kolumna
-# maxTrue		- maksymalna licznosc podzbioru
-mutation = function(generation, nMutate, predictions, data, column, maxTrue) {
-	#wszystkie ktore byly to beda
+# Mutuje losowo wybrana ilosc osobnikow z populacji
+#
+# generation[list]	- lista osobnikow sposrod ktorych wybrane zostana do mutacji
+# nMutate[int]		- liczba osobnikow do wykonania na nich mutacji
+# predictions[list]	- lista wektorow predykcji dla kolejnych modeli
+# dat[data.frame]	- pierwotne dane
+# column[string]	- kolumna(etykieta) ktora przewidujemy
+# maxTrue[int]		- maksymalna liczba uzytych modeli w osobniku
+#
+# return[list]	- lista danych osobnikow rozszerzona o zmutowane osobniki
+mutation = function(generation, nMutate, predictions, dat, column, maxTrue) {
 	result = generation
 	newCombinations = list()
-	position = 1
+	pos = 1
 
-	for( i in 1:nMutate) {
-		#wybierz osobnika do zmutowania
+	for(i in 1:nMutate) {
+		# wylosuj osobnika do zmutowania
 		toMutate <- generation[[sample.int(length(generation), 1)]]
-		#wybierz gen do zmiany
+
+		# wylosuj gen do zmiany i go zaneguj
 		gen <- sample.int(length(toMutate$predictionList), 1)
 		toMutate$predictionLis[[gen]] <- !toMutate$predictionLis[[gen]]
-		
-		#zlicz elementy w zbiorze
-		trueFields <- c()
-		for(j in 1:length(toMutate$predictionList)) {
-			if(toMutate$predictionList[[j]]) {
-				trueFields <- c(trueFields, j)
-			}
-		}
-		#a jak jest ich za duzo to wywal losowo zeby bylo dobrze
+
+		# zlicz elementy w zbiorze
+		trueFields <- which(toMutate$predictionList == TRUE) 
+
+		# jak jest ich za duzo to usun losowo zeby byla odpowiednia ilosc
 		if(length(trueFields) > maxTrue) {
-			toRemove = sample.int(length(trueFields), length(trueFields) - maxTrue)
-			for(j in 1:length(toRemove)) {
-				toMutate$predictionList[[j]] = !toMutate$predictionList[[j]]
+			if (length(trueFields) == 1) {
+				toMutate$predictionList[trueFields] <- FALSE
+			} else {
+				toMutate$predictionList[sample(trueFields, length(trueFields) - maxTrue)]
 			}
 		}
-		
-		#dodaj do zmutowanych kombinacji
-		newCombinations[[position]] <- toMutate$predictionList
-		position = position + 1
+
+		# dodaj do zmutowanych kombinacji
+		newCombinations[[pos]] <- toMutate$predictionList
+		pos = pos + 1
 	}
 
-	#dodaj do tych co byly ich mutanty
-	result <- c(result, calculatePredictions(predictions, newCombinations, data, column))
+	# dodaj zmutowane osobniki do tych co byly
+	result <- c(result, calculatePredictions(predictions, newCombinations, dat, column))
+
 	return (result)
 }
 
