@@ -71,20 +71,13 @@ mse = function(a, b) {
 	return (mean((a - b)^2, na.rm = TRUE))
 }
 
-# Losuje wiersze ze zwracaniem
-# Co najmniej 2 w celu wyeliminowania wartosci NA dla modelu regresji
+# Losuje wiersze ze zwracaniem rownoliczne z danym zbiorem
 #
 # dat[data.frame]	- dane do losowania z nich wierszy
 #
 # return[data.frame]	- wylosowane wiersze (co najmniej 2)
 randRows = function(dat) {
-	while (TRUE) {
-		r <- dat[sample(nrow(dat), sample.int(nrow(dat), 1), replace=T),]
-
-		if (nrow(r) > 2) {
-			break
-		}
-	}
+	r <- dat[sample(nrow(dat), replace=T),]
 
 	return (r)
 }
@@ -422,18 +415,18 @@ uniqueOrder = function(population) {
 # nMutate[int]		- liczba osobnikow wybieranych do mutacji
 # nExtend[int]		- liczba osobnikow, ktore beda rozszerzane o kolejny model w zbiorze
 # nRemove[int]		- liczba osobnikow najgorszych usuwanych z populacji (zostaje maksymalnie popSize-nRemove) - przy dodawaniu kolejnego elementu zbiorow
+# printStats[bool]	- czy drukowac proste statystyki na koncu
 #
 # return[data.frame]	- ramka z wynikami w formacie:
 #			$models			- lista wybranych modeli uzytych w osobniku
 #			$midPrediction	- srednia predykcja osobnika
 #			$rank			- blad sredniokwadratowy
-alhe = function(dat, mAmount=5, regression=lm, bestInIter=10, N=1, col=-1, epsilon = 0.01, nIter=10, popSize=50, nSelect=10, nMutate=2, nExtend=25, nRemove=25) {
+alhe = function(dat, mAmount=50, regression=lm, bestInIter=10, N=1, col=-1, epsilon=0.01, nIter=10, popSize=50, nSelect=10, nMutate=2, nExtend=25, nRemove=25, printStats=T) {
 	# jak nie podano to wez ostatnia kolumne i przewiduj ja
 	if (col == -1) {
 		nms <- names(dat)
 		col <- nms[length(nms)]
 	}
-
 
 	#########################
 	#	Generacja danych	#
@@ -608,22 +601,106 @@ alhe = function(dat, mAmount=5, regression=lm, bestInIter=10, N=1, col=-1, epsil
 	#	Debug stats		#
 	#####################
 
-	print("Ilosc uzytych modeli:")
-	print(length(result$models))
+	if (printStats) {
+		print("Ilosc uzytych modeli:")
+		print(length(result$models))
 
-	print("Uzyskany blad:")
-	print(result$rank)
+		print("Uzyskany blad:")
+		print(result$rank)
 
 
-	# tworzymy model, liczymy predykcje i blad sredniokwadratowy dla niezaburzonego zbioru danych
-	modelAll <- genModels(list(dat), col, regression)[[1]]
-	rankAll <- mse(predict(modelAll, dat), dat[,col])
+		# tworzymy model, liczymy predykcje i blad sredniokwadratowy dla niezaburzonego zbioru danych
+		modelAll <- genModels(list(dat), col, regression)[[1]]
+		rankAll <- mse(predict(modelAll, dat), dat[,col])
 
-	print("Blad dla calego zbioru danych:")
-	print(rankAll)
+		print("Blad dla calego zbioru danych:")
+		print(rankAll)
 
-	print("Uzyskana poprawa (jak dodania):")
-	print(rankAll - result$rank)
+		print("Uzyskana poprawa (jak dodania):")
+		print(rankAll - result$rank)
+	}
 
 	return (result)
+}
+
+# funkcja testujaca algorytm
+# dzieli zbior danych na dwa rozlaczne podzbiory
+# powtarza zadana testCount ilosc razy algorytm na pierwszym zbiorze
+# i oblicza blad srednio kwadratowy predykcji na zbiorze drugim
+# oblicza takze blad srednio kwadratowy uzywajac modelu utworzonego na pelnym drugim zbiorze z nim samym
+#
+# testCount[int]	- ilosc powtorzen testu
+#
+# return[list]	- lista list z wynikami dla poszczegolnych testow:
+#			$selfResult[double]		- blad srednio kwadratowy z predykcji z modelu utworzonego z drugiego zbioru na nim samym
+#			$meanResult[double]		- blad srednio kwadratowych ze sredniej z predykcji pojedynczych modeli na drugim zbiorze
+#			$singleResults[vector]	- lista bledow srednio kwadratowych z predykcji pojedynczych modeli na drugim zbiorze
+testAlhe = function(dat, testCount=10, mAmount=50, regression=lm, bestInIter=10, N=1, col=-1, epsilon=0.01, nIter=10, popSize=50, nSelect=10, nMutate=2, nExtend=25, nRemove=25) {
+	# jak nie podano to wez ostatnia kolumne i przewiduj ja
+	if (col == -1) {
+		nms <- names(dat)
+		col <- nms[length(nms)]
+	}
+
+	# zmienne wynikowe
+	results <- list()
+
+	# uruchamiamy testCount razy algorytm
+	for (i in 1:testCount) {
+		# podziel zbior danych na dwa wylosowane rozlaczne zbiory
+		rws <- sample.int(nrow(dat), nrow(dat)/2)
+		dat1 <- dat[rws,]
+		dat2 <- dat[-rws,]
+
+		z <- alhe(dat1, mAmount=mAmount, regression=regression, bestInIter=bestInIter, N=N, col=col, epsilon=epsilon, nIter=nIter, popSize=popSize, nSelect=nSelect, nMutate=nMutate, nExtend=nExtend, nRemove=nRemove, printStats=F)
+
+		meanResult <- 0
+		singleResults <- c()
+
+		usedPredictions = c()
+		firstOne = TRUE
+		
+		# liczymy blad dla kolejnych modeli i srednia z ich predykcji
+		for (j in 1:length(z$models)) {
+			prediction <- predict(z$models[[j]], dat2)
+			singleResults <- c(singleResults, mse(prediction, dat2[,col]))
+
+			if (firstOne) {
+				usedPredictions <- cbind(prediction)
+				firstOne = FALSE
+			} else {
+				usedPredictions <- cbind(usedPredictions, prediction)
+			}
+		}
+
+		# policz srednia predykcje
+		meanResult <- mse(rowMeans(usedPredictions), dat2[,col])
+
+		# policz blad z modelu stworzeonego i wykonanego na czesci danych nie uzytych do algorytmu
+		modelAll <- genModels(list(dat1), col, regression)[[1]]
+		rankAll <- mse(predict(modelAll, dat1), dat1[,col])
+
+		results[[i]] <- list(selfResult=0, meanResult=0, singleResults=0)
+		# blad srednio kwadratowy dla danych nie uzytych w algorytmie
+		results[[i]]$selfResult <- rankAll
+		# blad srednio kwadratowy dla sredniej z zaburzonych modeli znalezionych w algorytmie
+		results[[i]]$meanResult <- meanResult
+		# wektor bledow srednio kwadratowych dla pojedynczych modeli
+		results[[i]]$singleResults <- singleResults
+
+
+		# print('----------------------------------------------')
+		# print(z)
+		# print('----------------------------------------------')
+		# print(length(z$models))
+		# print('----------------------------------------------')
+		# print(rankAll)
+		# print(meanResult)
+		# print(rankAll - meanResult)
+		# print('----------------------------------------------')
+		# print(singleResults)
+		# print('----------------------------------------------')
+	}
+
+	return (results)
 }
