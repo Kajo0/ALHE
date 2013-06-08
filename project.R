@@ -418,6 +418,7 @@ uniqueOrder = function(population) {
 # printStats[bool]	- czy drukowac proste statystyki na koncu
 #
 # return[data.frame]	- ramka z wynikami w formacie:
+#			$genModels		- lista wszystkich wygenerowanych modeli
 #			$models			- lista wybranych modeli uzytych w osobniku
 #			$midPrediction	- srednia predykcja osobnika
 #			$rank			- blad sredniokwadratowy
@@ -586,7 +587,7 @@ alhe = function(dat, mAmount=50, regression=lm, bestInIter=10, N=1, col=-1, epsi
 	#	Koniec algorytmu - wyciagniecie wynikow		#
 	#################################################
 
-	result = list(models=list(), midPrediction=population[[1]]$midPrediction, rank=population[[1]]$rank)
+	result = list(genModels=models, models=list(), midPrediction=population[[1]]$midPrediction, rank=population[[1]]$rank)
 
 	pos = 1
 	for (i in 1:length(population[[1]]$predictionList)) {
@@ -656,14 +657,15 @@ testAlhe = function(dat, testCount=10, mAmount=50, regression=lm, bestInIter=10,
 
 		meanResult <- 0
 		singleResults <- c()
+		eachSingleResult <- 0
 
+		# zeby obliczyc usredniona predykcje dla znalezionych modeli
 		usedPredictions = c()
 		firstOne = TRUE
 		
 		# liczymy blad dla kolejnych modeli i srednia z ich predykcji
 		for (j in 1:length(z$models)) {
 			prediction <- predict(z$models[[j]], dat2)
-			singleResults <- c(singleResults, mse(prediction, dat2[,col]))
 
 			if (firstOne) {
 				usedPredictions <- cbind(prediction)
@@ -676,17 +678,45 @@ testAlhe = function(dat, testCount=10, mAmount=50, regression=lm, bestInIter=10,
 		# policz srednia predykcje
 		meanResult <- mse(rowMeans(usedPredictions), dat2[,col])
 
-		# policz blad z modelu stworzeonego i wykonanego na czesci danych nie uzytych do algorytmu
-		modelAll <- genModels(list(dat1), col, regression)[[1]]
-		rankAll <- mse(predict(modelAll, dat1), dat1[,col])
 
-		results[[i]] <- list(selfResult=0, meanResult=0, singleResults=0)
+		usedPredictions = c()
+		firstOne = TRUE
+
+		# liczymy blad dla usrednienia wszystkich modeli
+		for (j in 1:length(z$genModels)) {
+			prediction <- predict(z$genModels[[j]], dat2)
+			singleResults <- c(singleResults, mse(prediction, dat2[,col]))
+
+			if (firstOne) {
+				usedPredictions <- cbind(prediction)
+				firstOne = FALSE
+			} else {
+				usedPredictions <- cbind(usedPredictions, prediction)
+			}
+		}
+
+		# policz srednia predykcje
+		eachSingleResult <- mse(rowMeans(usedPredictions), dat2[,col])
+
+
+		results[[i]] <- list(meanResult=meanResult, minSingleResult=min(singleResults), eachMeanResult=eachSingleResult)
+		
+		if (i == 1) {
+			print(c("Wynik naszego algorytmu", "Minimum ze wszystkich modeli", "Usrednienie ze wszystkich modeli"))
+		}
+		print(c(meanResult, min(singleResults), eachSingleResult))
+
+		# policz blad z modelu stworzeonego i wykonanego na czesci danych nie uzytych do algorytmu
+		# modelAll <- genModels(list(dat1), col, regression)[[1]]
+		# rankAll <- mse(predict(modelAll, dat1), dat1[,col])
+
+		# results[[i]] <- list(selfResult=0, meanResult=0, singleResults=0)
 		# blad srednio kwadratowy dla danych nie uzytych w algorytmie
-		results[[i]]$selfResult <- rankAll
+		# results[[i]]$selfResult <- rankAll
 		# blad srednio kwadratowy dla sredniej z zaburzonych modeli znalezionych w algorytmie
-		results[[i]]$meanResult <- meanResult
+		# results[[i]]$meanResult <- meanResult
 		# wektor bledow srednio kwadratowych dla pojedynczych modeli
-		results[[i]]$singleResults <- singleResults
+		# results[[i]]$singleResults <- singleResults
 
 
 		# print('----------------------------------------------')
