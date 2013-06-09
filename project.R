@@ -277,14 +277,14 @@ copulateEntity = function(set1, set2, maxTrue, rank1, rank2) {
 	ranks <- c(0,0)
 	
 	#oblicz stosunki rankingow (mniejszy == lepszy)
-	if(rank1 == max(rank1, rank2)) {
+	if(rank1 > rank2) {
 		#osobnik 2 jest lepszy
 		ranks[1] <- min(1 - rank2/rank1, rank2/rank1)
 		ranks[2] <- max(1 - rank2/rank1, rank2/rank1)
 	} else {
 		#osobnik 1 jest lepszy
-		ranks[1] <- max(1 - rank2/rank1, rank2/rank1)
-		ranks[2] <- min(1 - rank2/rank1, rank2/rank1)
+		ranks[1] <- max(1 - rank1/rank2, rank1/rank2)
+		ranks[2] <- min(1 - rank1/rank2, rank1/rank2)
 	}
 	
 	while( length(un1) > 0 && length(un2) > 0) {
