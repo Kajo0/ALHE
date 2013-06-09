@@ -271,30 +271,45 @@ copulateEntity = function(set1, set2, maxTrue, rank1, rank2) {
 	w1 <- which(set1 == TRUE)
 	w2 <- which(set2 == TRUE)
 
-	w <- unique(append(w1, w2))
-
-	if (sum(sm) > maxTrue) {
-		# usuwamy losowe wystepujace tylko w osobniku z mniejszym rankingiem (wiekszym bledem)
-		if (rank1 > rank2) {
-			r = w1
+	un1 <- w1[-w2]
+	un2 <- w2[-w1]
+	
+	ranks <- c(0,0)
+	
+	#oblicz stosunki rankingow (mniejszy == lepszy)
+	if(rank1 == max(rank1, rank2)) {
+		#osobnik 2 jest lepszy
+		ranks[1] <- min(1 - rank2/rank1, rank2/rank1)
+		ranks[2] <- max(1 - rank2/rank1, rank2/rank1)
+	} else {
+		#osobnik 1 jest lepszy
+		ranks[1] <- max(1 - rank2/rank1, rank2/rank1)
+		ranks[2] <- min(1 - rank2/rank1, rank2/rank1)
+	}
+	
+	while( length(un1) > 0 && length(un2) > 0) {
+		if(sum(sm) > maxTrue) {
+			if(sample(c(1,2), 1, prob=ranks) == 1) {
+				toRm <- sample(un1, 1)
+				sm[toRm] <- FALSE
+				un1 = un1[-which(un1 == toRm)]
+			} else {
+				toRm <- sample(un2, 1)
+				sm[toRm] <- FALSE
+				un2 = un2[-which(un2 == toRm)]
+			} 
 		} else {
-			r = w2
-		}
-
-		toRemoveAmount = sum(sm) - maxTrue
-
-		# jak wiecej do usuniecia niz jest w gorszym to usuwamy losowo z dwoch
-		if (toRemoveAmount > length(r)) {
-			r = w
-		}
-
-		if (length(r) == 1) {
-			sm[r] <- FALSE
-		} else {
-			sm[sample(r, toRemoveAmount)] <- FALSE
+			break;
 		}
 	}
-
+	
+	#jezeli nam braklo to usowamy z tego co mamy
+	if(sum(sm) > maxTrue) {
+		toRm <- which(sm == TRUE)
+		
+		sm[sample(toRm, sum(sm) - maxTrue)] <- FALSE
+	}
+	
 	return (sm)
 }
 
