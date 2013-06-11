@@ -646,7 +646,19 @@ alhe = function(dat, mAmount=50, regression=lm, bestInIter=10, N=1, col=-1, epsi
 # oblicza takze blad srednio kwadratowy uzywajac modelu utworzonego na pelnym drugim zbiorze z nim samym
 #
 # testCount[int]	- ilosc powtorzen testu
-#
+# dat[data.frame]	- ramka z pierwotnymi danymi dla ktorych uruchamiamy algorytm
+# mAmount[int]		- liczba zaburzonych modeli do wygenerowania, minimum 2
+# regression[function]	- funkcja uzywana do utworzenia modelu regresji {lm|rpart}
+# bestInIter[int]	- liczba iteracji zwiekszania licznosci modeli przez ktora musi sie zachowac najlepszy osobnik zeby zakonczyc dzialanie algorytmu
+# N[int]			- liczba uzytych modeli w osobniku dla pierwszej populacji (kombinacje N elementowe uzytych modeli)
+# col[string]		- kolumna(etykieta) ktora chcemy przewidywac, gdy -1 wybierana ostatnia kolumna
+# epsilon[double]	- roznica w ocenie najlepszych osobnikow kolejnych populacji po osiagnieciu ktorej nastepuje koniec dzialania algorytmu
+# nIter[int]		- liczba iteracji przez ktora najlepszy osobnik sie nie zmienia i po ktorej zostaje rozszerzona liczba modeli w osobnikach
+# popSize[int]		- maksymalny rozmiar populacji
+# nSelect[int]		- liczba osobnikow wybieranych do krzyzowania
+# nMutate[int]		- liczba osobnikow wybieranych do mutacji
+# nExtend[int]		- liczba osobnikow, ktore beda rozszerzane o kolejny model w zbiorze
+# nRemove[int]		- liczba osobnikow najgorszych usuwanych z populacji (zostaje maksymalnie popSize-nRemove) - przy dodawaniu kolejnego elementu zbiorow
 # return[list]	- lista list z wynikami dla poszczegolnych testow:
 #			$selfResult[double]		- blad srednio kwadratowy z predykcji z modelu utworzonego z drugiego zbioru na nim samym
 #			$meanResult[double]		- blad srednio kwadratowych ze sredniej z predykcji pojedynczych modeli na drugim zbiorze
@@ -692,7 +704,7 @@ testAlhe = function(dat, testCount=10, mAmount=50, regression=lm, bestInIter=10,
 
 		# policz srednia predykcje
 		meanResult <- mse(rowMeans(usedPredictions), dat2[,col])
-
+		nmbOfModels <- ncol(usedPredictions)
 
 		usedPredictions = c()
 		firstOne = TRUE
@@ -714,12 +726,21 @@ testAlhe = function(dat, testCount=10, mAmount=50, regression=lm, bestInIter=10,
 		eachSingleResult <- mse(rowMeans(usedPredictions), dat2[,col])
 
 
-		results[[i]] <- list(meanResult=meanResult, minSingleResult=min(singleResults), eachMeanResult=eachSingleResult)
+		results[[i]] <- list(meanResult=meanResult, nmbOfModels=nmbOfModels, minSingleResult=min(singleResults), eachMeanResult=eachSingleResult)
 		
 		if (i == 1) {
-			print(c("Wynik naszego algorytmu", "Minimum ze wszystkich modeli", "Usrednienie ze wszystkich modeli"))
+			print(c("Wynik naszego algorytmu", "Licznosc naszego modelu", "Minimum ze wszystkich modeli", "Nasz Lepszy od pojedynczego", "Usrednienie ze wszystkich modeli", "Nasz lepszy od wszystkich"))
 		}
-		print(c(meanResult, min(singleResults), eachSingleResult))
+		
+		betterThanOne <- 1
+		betterThanAll <- 1
+		if(meanResult - min(singleResults) >= 0) {
+			betterThanOne <- 0
+		}
+		if(meanResult - eachSingleResult >= 0) {
+			betterThanAll <- 0
+		}
+		print(c(meanResult, nmbOfModels, min(singleResults),betterThanOne, eachSingleResult, betterThanAll))
 
 		# policz blad z modelu stworzeonego i wykonanego na czesci danych nie uzytych do algorytmu
 		# modelAll <- genModels(list(dat1), col, regression)[[1]]
@@ -747,5 +768,32 @@ testAlhe = function(dat, testCount=10, mAmount=50, regression=lm, bestInIter=10,
 		# print('----------------------------------------------')
 	}
 
+print(c("Pojedynczy-nasz", "wszystkie - nasz", "Sredni rozmiar"))
+	print(c(mean(sapply(results, function(r) r$minSingleResult - r$meanResult)),mean( sapply( results, function(r) r$eachMeanResult - r$meanResult)), mean(sapply(results, function(r) r$nmbOfModels))))
 	return (results)
 }
+
+
+testAll = function()
+{
+	print(c("BestInIter zakres 1:20"))
+	for(i in 1:20) {
+		testAlhe(BostonHousing, 20, 50, regression=rpart, bestInIter=i)
+	}
+	
+	print(c("nIter zakres 1:20"))
+	for(i in 1:20) {
+		testAlhe(BostonHousing, 20, 50, regression=rpart, nIter=i)
+	}
+	
+	print(c("popSize zakres 10:150 co 10 nSelect= 0.2*popSize, nMutate=0.5*nSelect nExtend = popSize*0.5, nRemove=popSize*0.5"))
+	for(i in 1:15) {
+		testAlhe(BostonHousing, 20, 50, regression=rpart, popSize=i*10, nSelect=i*2, nMutate=i, nExtend=i*5, nRemove= i*5 )
+	}
+	
+	print(c("selekcja zakres 10-100 co 5. popSize = 100, mutate 0.2, nExtend = popSize*0.5, nRemove=popSize*0.5"))
+	for(i in 2:20) {
+		testAlhe(BostonHousing, 20, 50, regression=rpart, popSize=100, nSelect=i*5, nMutate=i, nExtend=50, nRemove=50 )
+	}
+}
+
