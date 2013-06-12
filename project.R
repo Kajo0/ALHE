@@ -13,7 +13,7 @@
 ## lub z uzyciem regresji liniowej, po prostu
 ##	z <- alhe(a)
 #
-## otrzymujemy informacje debugowe np.
+## dla domyslnej wartosci TRUE parametru printStats, otrzymujemy informacje debugowe np.
 ##	> z <- alhe(a, regression=rpart)
 ##	[1] "Ilosc uzytych modeli:"
 ##	[1] 2
@@ -25,6 +25,7 @@
 ##	[1] 4.009681
 #
 ## znaleziony osobnik zapisany w zmiennej z w postaci listy:
+##	$genModels		- lista wszystkich wygenerowanych modeli
 ##	$models			- lista uzytych modeli regresji
 ##	$midPrediction	- usredniona predykcja uzytych modeli
 ##	$rank			- sredni blad sredniokwadratowy dla uzyskanego wyniku z przewidywana kolumna
